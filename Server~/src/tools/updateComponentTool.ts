@@ -7,7 +7,17 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 // Constants for the tool
 const toolName = 'update_component';
-const toolDescription = 'Updates component fields on a GameObject or adds it to the GameObject if it does not contain the component';
+const toolDescription = `Updates component fields on a GameObject or adds it to the GameObject if it does not contain the component.
+
+For setting references to scene objects (GameObjects, Components, MonoBehaviours), use a reference descriptor instead of a plain value in componentData:
+  { "$ref": "scene", "objectPath": "Path/To/Object" }
+  { "$ref": "scene", "instanceId": 12345 }
+  { "$ref": "scene", "objectPath": "Path/To/Object", "componentType": "Camera" }
+
+When componentType is omitted, the type is inferred from the field's declared type.
+When the field type is GameObject, the GameObject itself is returned.
+When the field type is a Component subclass, GetComponent is called automatically using the field type.
+Use componentType to override inference (e.g., when the field type is a base class like Collider and you want a specific BoxCollider).`;
 const paramsSchema = z.object({
   instanceId: z.number().optional().describe('The instance ID of the GameObject to update'),
   objectPath: z.string().optional().describe('The path of the GameObject in the hierarchy to update (alternative to instanceId)'),
