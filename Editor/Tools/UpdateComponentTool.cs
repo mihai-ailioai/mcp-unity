@@ -279,8 +279,17 @@ namespace McpUnity.Tools
                     
                 if (fieldInfo != null)
                 {
-                    object value = ConvertJTokenToValue(fieldValue, fieldInfo.FieldType);
-                    fieldInfo.SetValue(component, value);
+                    try
+                    {
+                        object value = ConvertJTokenToValue(fieldValue, fieldInfo.FieldType);
+                        fieldInfo.SetValue(component, value);
+                    }
+                    catch (Exception ex)
+                    {
+                        fullSuccess = false;
+                        errorMessage = $"Error setting field '{fieldName}' on component '{componentType.Name}': {ex.Message}";
+                        McpLogger.LogError($"[MCP Unity] {errorMessage}");
+                    }
                     continue;
                 }
                 
@@ -290,13 +299,30 @@ namespace McpUnity.Tools
                 
                 if (propertyInfo != null)
                 {
-                    object value = ConvertJTokenToValue(fieldValue, propertyInfo.PropertyType);
-                    propertyInfo.SetValue(component, value);
+                    if (!propertyInfo.CanWrite)
+                    {
+                        fullSuccess = false;
+                        errorMessage = $"Property '{fieldName}' on component '{componentType.Name}' is read-only";
+                        McpLogger.LogError($"[MCP Unity] {errorMessage}");
+                        continue;
+                    }
+                    try
+                    {
+                        object value = ConvertJTokenToValue(fieldValue, propertyInfo.PropertyType);
+                        propertyInfo.SetValue(component, value);
+                    }
+                    catch (Exception ex)
+                    {
+                        fullSuccess = false;
+                        errorMessage = $"Error setting property '{fieldName}' on component '{componentType.Name}': {ex.Message}";
+                        McpLogger.LogError($"[MCP Unity] {errorMessage}");
+                    }
                     continue;
                 }
                 
                 fullSuccess = false;
-                errorMessage = $"Field or Property  with name '{fieldName}' not found on component '{componentType.Name}'";
+                errorMessage = $"Field or Property with name '{fieldName}' not found on component '{componentType.Name}'";
+                McpLogger.LogError($"[MCP Unity] {errorMessage}");
             }
 
             return fullSuccess;
@@ -313,6 +339,14 @@ namespace McpUnity.Tools
             if (token == null)
             {
                 return null;
+            }
+
+            // Handle scene object references via $ref descriptor
+            if (typeof(UnityEngine.Object).IsAssignableFrom(targetType)
+                && token.Type == JTokenType.Object
+                && token["$ref"] != null)
+            {
+                return ResolveObjectReference((JObject)token, targetType);
             }
             
             // Handle Unity Vector types
@@ -387,10 +421,15 @@ namespace McpUnity.Tools
                 );
             }
             
-            // Handle UnityEngine.Object types;
-            if (targetType == typeof(UnityEngine.Object))
+            // Handle UnityEngine.Object types - if we reach here without a $ref descriptor,
+            // there's no way to resolve a scene/asset reference from plain JSON.
+            // Throw instead of returning null to prevent silently clearing existing references.
+            if (typeof(UnityEngine.Object).IsAssignableFrom(targetType))
             {
-                return token.ToObject<UnityEngine.Object>();
+                throw new Exception(
+                    $"Cannot set field of type '{targetType.Name}' from a plain JSON value. " +
+                    "Use a $ref descriptor: {\"$ref\": \"scene\", \"objectPath\": \"Path/To/Object\"} or " +
+                    "{\"$ref\": \"scene\", \"instanceId\": 12345}");
             }
             
             // Handle enum types
@@ -428,6 +467,144 @@ namespace McpUnity.Tools
                 McpLogger.LogError($"[MCP Unity] Error converting value to type {targetType.Name}: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Resolves a $ref descriptor to a live Unity object reference.
+        /// Supports scene object references (GameObjects and Components).
+        /// </summary>
+        /// <param name="refDescriptor">The JSON object containing $ref and lookup parameters</param>
+        /// <param name="targetType">The declared field type to resolve to</param>
+        /// <returns>The resolved UnityEngine.Object, or null if resolution fails</returns>
+        /// <exception cref="Exception">Thrown with descriptive message when resolution fails</exception>
+        private UnityEngine.Object ResolveObjectReference(JObject refDescriptor, Type targetType)
+        {
+            string refType = refDescriptor["$ref"]?.ToObject<string>();
+            
+            if (refType != "scene")
+            {
+                throw new Exception($"Unsupported $ref type '{refType}'. Currently supported: 'scene'");
+            }
+            
+            // Locate the target GameObject
+            int? instanceId = refDescriptor["instanceId"]?.ToObject<int?>();
+            string objectPath = refDescriptor["objectPath"]?.ToObject<string>();
+            
+            if (!instanceId.HasValue && string.IsNullOrEmpty(objectPath))
+            {
+                throw new Exception("Scene reference must provide either 'instanceId' or 'objectPath'");
+            }
+            
+            GameObject referencedObject = null;
+            string refIdentifier;
+            
+            if (instanceId.HasValue)
+            {
+                var obj = EditorUtility.InstanceIDToObject(instanceId.Value);
+                referencedObject = obj as GameObject;
+                // If the instance ID points to a Component, get its GameObject
+                if (referencedObject == null && obj is Component comp)
+                {
+                    referencedObject = comp.gameObject;
+                }
+                refIdentifier = $"instanceId {instanceId.Value}";
+            }
+            else
+            {
+                referencedObject = GameObject.Find(objectPath);
+                if (referencedObject == null)
+                {
+                    referencedObject = FindGameObjectByPath(objectPath);
+                }
+                refIdentifier = $"objectPath '{objectPath}'";
+            }
+            
+            if (referencedObject == null)
+            {
+                throw new Exception($"Referenced GameObject not found: {refIdentifier}");
+            }
+            
+            // Resolve to the correct type based on the field's declared type
+            
+            // Case 1: Field type is GameObject - return the GO directly
+            if (targetType == typeof(GameObject))
+            {
+                return referencedObject;
+            }
+            
+            // Case 2: Field type is a Component subclass - find the component
+            if (typeof(Component).IsAssignableFrom(targetType))
+            {
+                string componentTypeName = refDescriptor["componentType"]?.ToObject<string>();
+                Component resolved;
+                
+                if (!string.IsNullOrEmpty(componentTypeName))
+                {
+                    // Explicit componentType override - find that specific type
+                    Type requestedType = FindComponentType(componentTypeName);
+                    if (requestedType == null)
+                    {
+                        throw new Exception($"Component type '{componentTypeName}' not found");
+                    }
+                    
+                    resolved = referencedObject.GetComponent(requestedType);
+                    if (resolved == null)
+                    {
+                        throw new Exception(
+                            $"Component '{componentTypeName}' not found on GameObject '{referencedObject.name}'");
+                    }
+                    
+                    // Validate assignability to the declared field type
+                    if (!targetType.IsAssignableFrom(requestedType))
+                    {
+                        throw new Exception(
+                            $"Component '{componentTypeName}' is not assignable to field type '{targetType.Name}'");
+                    }
+                }
+                else
+                {
+                    // Infer from the field's declared type
+                    resolved = referencedObject.GetComponent(targetType);
+                    if (resolved == null)
+                    {
+                        throw new Exception(
+                            $"Component of type '{targetType.Name}' not found on GameObject '{referencedObject.name}'");
+                    }
+                }
+                
+                return resolved;
+            }
+            
+            // Case 3: Field type is exactly UnityEngine.Object (base class) - need componentType to disambiguate
+            // Without componentType, return the GameObject itself
+            if (targetType != typeof(UnityEngine.Object))
+            {
+                throw new Exception(
+                    $"Cannot resolve scene reference to field type '{targetType.Name}'. " +
+                    "Only GameObject, Component subclasses, and UnityEngine.Object fields are supported.");
+            }
+            
+            string baseComponentType = refDescriptor["componentType"]?.ToObject<string>();
+            if (!string.IsNullOrEmpty(baseComponentType))
+            {
+                Type requestedType = FindComponentType(baseComponentType);
+                if (requestedType == null)
+                {
+                    throw new Exception($"Component type '{baseComponentType}' not found");
+                }
+                
+                Component resolved = referencedObject.GetComponent(requestedType);
+                if (resolved == null)
+                {
+                    throw new Exception(
+                        $"Component '{baseComponentType}' not found on GameObject '{referencedObject.name}'");
+                }
+                
+                return resolved;
+            }
+            
+            // Default: return the GameObject for unqualified UnityEngine.Object fields
+            return referencedObject;
         }
     }
 }
