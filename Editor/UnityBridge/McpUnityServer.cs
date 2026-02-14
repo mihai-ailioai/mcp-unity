@@ -423,6 +423,10 @@ namespace McpUnity.Unity
             RemoveComponentTool removeComponentTool = new RemoveComponentTool();
             _tools.Add(removeComponentTool.Name, removeComponentTool);
 
+            // Register SetRectTransformTool
+            SetRectTransformTool setRectTransformTool = new SetRectTransformTool();
+            _tools.Add(setRectTransformTool.Name, setRectTransformTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
