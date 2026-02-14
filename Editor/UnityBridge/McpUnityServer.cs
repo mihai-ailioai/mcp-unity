@@ -431,6 +431,14 @@ namespace McpUnity.Unity
             SaveAsPrefabTool saveAsPrefabTool = new SaveAsPrefabTool();
             _tools.Add(saveAsPrefabTool.Name, saveAsPrefabTool);
 
+            // Register CreateScriptableObjectTool
+            CreateScriptableObjectTool createScriptableObjectTool = new CreateScriptableObjectTool();
+            _tools.Add(createScriptableObjectTool.Name, createScriptableObjectTool);
+
+            // Register UpdateScriptableObjectTool
+            UpdateScriptableObjectTool updateScriptableObjectTool = new UpdateScriptableObjectTool();
+            _tools.Add(updateScriptableObjectTool.Name, updateScriptableObjectTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
