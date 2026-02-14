@@ -49,7 +49,7 @@ namespace McpUnity.Tools
                 {
                     foreach (Type t in assembly.GetTypes())
                     {
-                        if (t.Name == typeName && (baseConstraint == null || baseConstraint.IsAssignableFrom(t)))
+                        if ((t.Name == typeName || t.FullName == typeName) && (baseConstraint == null || baseConstraint.IsAssignableFrom(t)))
                         {
                             return t;
                         }
@@ -283,7 +283,8 @@ namespace McpUnity.Tools
             {
                 throw new Exception(
                     $"Cannot set field of type '{targetType.Name}' from a plain JSON value. " +
-                    "Use a $ref descriptor: {\"$ref\": \"scene\", \"objectPath\": \"Path/To/Object\"} or " +
+                    "Use a $ref descriptor: {\"$ref\": \"scene\", \"objectPath\": \"Path/To/Object\"}, " +
+                    "{\"$ref\": \"scene\", \"instanceId\": 12345}, or " +
                     "{\"$ref\": \"asset\", \"assetPath\": \"Assets/Path/To/Asset.ext\"}");
             }
 

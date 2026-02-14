@@ -32,13 +32,15 @@ namespace McpUnity.Tools
             }
 
             // Validate required parameter
-            if (string.IsNullOrEmpty(scriptableObjectType))
+            if (string.IsNullOrEmpty(scriptableObjectType) || string.IsNullOrWhiteSpace(scriptableObjectType))
             {
                 return McpUnitySocketHandler.CreateErrorResponse(
                     "Required parameter 'scriptableObjectType' not provided",
                     "validation_error"
                 );
             }
+
+            scriptableObjectType = scriptableObjectType.Trim();
 
             // Resolve the ScriptableObject type
             Type soType = SerializedFieldUtils.FindType(scriptableObjectType, typeof(ScriptableObject));
@@ -107,6 +109,15 @@ namespace McpUnity.Tools
                 } while (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(savePath, AssetPathToGUIDOptions.OnlyExistingAssets)));
 
                 fileName = Path.GetFileNameWithoutExtension(savePath);
+            }
+
+            // Validate the type is instantiable
+            if (soType.IsAbstract)
+            {
+                return McpUnitySocketHandler.CreateErrorResponse(
+                    $"Cannot create instance of abstract ScriptableObject type '{scriptableObjectType}'",
+                    "type_error"
+                );
             }
 
             // Create the ScriptableObject instance
