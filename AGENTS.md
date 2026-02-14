@@ -112,6 +112,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - **Unity domain reload**: the server stops during script reloads and may restart; avoid relying on persistent in-memory state across reloads.
 - **Multiplayer Play Mode**: Clone instances automatically skip server startup; only the main editor hosts the MCP server.
 - **`Server~` directory ignored by git**: The `Server~` directory name ends with `~`, which is matched by common global gitignore rules (e.g. `*~` in `~/.gitignore_global`). When adding new or modified files under `Server~/`, you **must** use `git add -f "Server~/path/to/file"` to force-add them. Existing tracked files are unaffected; this only matters for **new** files.
+- **Missing `.meta` files for C# scripts**: Every `.cs` file under `Editor/` **must** have a corresponding `.cs.meta` file committed to git. Unity packages are immutable folders — Unity cannot auto-generate meta files for them. Without a meta file, the script is silently ignored. Format: `fileFormatVersion: 2\nguid: <32-char-hex>`. Generate a unique GUID (e.g. `python3 -c "import uuid; print(uuid.uuid4().hex[:32])"`) for each new file.
 
 ### Release/version bump checklist
 - Update versions consistently:
