@@ -28,6 +28,7 @@ import { registerCreatePrimitiveTool } from './tools/createPrimitiveTool.js';
 import { registerCreateTagTool } from './tools/createTagTool.js';
 import { registerRemoveComponentTool } from './tools/removeComponentTool.js';
 import { registerSetRectTransformTool } from './tools/setRectTransformTool.js';
+import { registerSaveAsPrefabTool } from './tools/saveAsPrefabTool.js';
 import { registerBatchExecuteTool } from './tools/batchExecuteTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
@@ -95,6 +96,7 @@ registerCreatePrimitiveTool(server, mcpUnity, toolLogger);
 registerCreateTagTool(server, mcpUnity, toolLogger);
 registerRemoveComponentTool(server, mcpUnity, toolLogger);
 registerSetRectTransformTool(server, mcpUnity, toolLogger);
+registerSaveAsPrefabTool(server, mcpUnity, toolLogger);
 
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);

@@ -427,6 +427,10 @@ namespace McpUnity.Unity
             SetRectTransformTool setRectTransformTool = new SetRectTransformTool();
             _tools.Add(setRectTransformTool.Name, setRectTransformTool);
 
+            // Register SaveAsPrefabTool
+            SaveAsPrefabTool saveAsPrefabTool = new SaveAsPrefabTool();
+            _tools.Add(saveAsPrefabTool.Name, saveAsPrefabTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
