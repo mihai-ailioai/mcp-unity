@@ -284,7 +284,7 @@ namespace McpUnity.Tools
                 throw new Exception(
                     $"Cannot set field of type '{targetType.Name}' from a plain JSON value. " +
                     "Use a $ref descriptor: {\"$ref\": \"scene\", \"objectPath\": \"Path/To/Object\"} or " +
-                    "{\"$ref\": \"scene\", \"instanceId\": 12345}");
+                    "{\"$ref\": \"asset\", \"assetPath\": \"Assets/Path/To/Asset.ext\"}");
             }
 
             if (targetType.IsEnum)
@@ -321,7 +321,7 @@ namespace McpUnity.Tools
 
         /// <summary>
         /// Resolves a $ref descriptor to a live Unity object reference.
-        /// Supports scene object references (GameObjects and Components).
+        /// Supports scene object references (GameObjects and Components) and asset references (by path or GUID).
         /// </summary>
         /// <param name="refDescriptor">The JSON object containing $ref and lookup parameters</param>
         /// <param name="targetType">The declared field type to resolve to</param>
@@ -331,9 +331,14 @@ namespace McpUnity.Tools
         {
             string refType = refDescriptor["$ref"]?.ToObject<string>();
 
+            if (refType == "asset")
+            {
+                return ResolveAssetReference(refDescriptor, targetType);
+            }
+
             if (refType != "scene")
             {
-                throw new Exception($"Unsupported $ref type '{refType}'. Currently supported: 'scene'");
+                throw new Exception($"Unsupported $ref type '{refType}'. Supported types: 'scene', 'asset'");
             }
 
             int? instanceId = refDescriptor["instanceId"]?.ToObject<int?>();
@@ -443,6 +448,114 @@ namespace McpUnity.Tools
             }
 
             return referencedObject;
+        }
+
+        private static UnityEngine.Object ResolveAssetReference(JObject refDescriptor, Type targetType)
+        {
+            string assetPath = refDescriptor["assetPath"]?.ToObject<string>();
+            string guid = refDescriptor["guid"]?.ToObject<string>();
+
+            if (string.IsNullOrEmpty(assetPath) && string.IsNullOrEmpty(guid))
+            {
+                throw new Exception("Asset reference must provide either 'assetPath' or 'guid'");
+            }
+
+            string guidResolvedPath = null;
+            if (!string.IsNullOrEmpty(guid))
+            {
+                guidResolvedPath = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(guidResolvedPath))
+                {
+                    throw new Exception($"No asset found for GUID '{guid}'");
+                }
+            }
+
+            if (!string.IsNullOrEmpty(assetPath) && !string.IsNullOrEmpty(guidResolvedPath))
+            {
+                if (!string.Equals(assetPath, guidResolvedPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new Exception(
+                        $"Asset path mismatch: assetPath='{assetPath}' but GUID '{guid}' resolves to '{guidResolvedPath}'");
+                }
+            }
+
+            string resolvedPath = !string.IsNullOrEmpty(assetPath) ? assetPath : guidResolvedPath;
+
+            UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath(resolvedPath, typeof(UnityEngine.Object));
+            if (asset == null)
+            {
+                throw new Exception($"No asset found at path '{resolvedPath}'");
+            }
+
+            if (typeof(Component).IsAssignableFrom(targetType) && asset is GameObject prefabGo)
+            {
+                string componentTypeName = refDescriptor["componentType"]?.ToObject<string>();
+                Component resolved;
+
+                if (!string.IsNullOrEmpty(componentTypeName))
+                {
+                    Type requestedType = FindType(componentTypeName, typeof(Component));
+                    if (requestedType == null)
+                    {
+                        throw new Exception($"Component type '{componentTypeName}' not found");
+                    }
+
+                    resolved = prefabGo.GetComponent(requestedType);
+                    if (resolved == null)
+                    {
+                        throw new Exception($"Component '{componentTypeName}' not found on prefab '{prefabGo.name}'");
+                    }
+
+                    if (!targetType.IsAssignableFrom(requestedType))
+                    {
+                        throw new Exception($"Component '{componentTypeName}' is not assignable to field type '{targetType.Name}'");
+                    }
+                }
+                else
+                {
+                    resolved = prefabGo.GetComponent(targetType);
+                    if (resolved == null)
+                    {
+                        throw new Exception($"Component of type '{targetType.Name}' not found on prefab '{prefabGo.name}'");
+                    }
+                }
+                return resolved;
+            }
+
+            if (targetType == typeof(GameObject) && asset is GameObject go)
+            {
+                return go;
+            }
+
+            // Handle UnityEngine.Object target type with componentType override for prefab assets
+            if (targetType == typeof(UnityEngine.Object) && asset is GameObject goForComponent)
+            {
+                string componentTypeName = refDescriptor["componentType"]?.ToObject<string>();
+                if (!string.IsNullOrEmpty(componentTypeName))
+                {
+                    Type requestedType = FindType(componentTypeName, typeof(Component));
+                    if (requestedType == null)
+                    {
+                        throw new Exception($"Component type '{componentTypeName}' not found");
+                    }
+
+                    Component resolved = goForComponent.GetComponent(requestedType);
+                    if (resolved == null)
+                    {
+                        throw new Exception($"Component '{componentTypeName}' not found on prefab '{goForComponent.name}'");
+                    }
+
+                    return resolved;
+                }
+            }
+
+            if (!targetType.IsAssignableFrom(asset.GetType()))
+            {
+                throw new Exception(
+                    $"Asset at '{resolvedPath}' is of type '{asset.GetType().Name}', not assignable to field type '{targetType.Name}'");
+            }
+
+            return asset;
         }
     }
 }
