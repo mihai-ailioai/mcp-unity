@@ -111,6 +111,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - **Remote connections**: Unity must bind `0.0.0.0` (`AllowRemoteConnections=true`) and Node must target the correct host (`UNITY_HOST`).
 - **Unity domain reload**: the server stops during script reloads and may restart; avoid relying on persistent in-memory state across reloads.
 - **Multiplayer Play Mode**: Clone instances automatically skip server startup; only the main editor hosts the MCP server.
+- **`Server~` directory ignored by git**: The `Server~` directory name ends with `~`, which is matched by common global gitignore rules (e.g. `*~` in `~/.gitignore_global`). When adding new or modified files under `Server~/`, you **must** use `git add -f "Server~/path/to/file"` to force-add them. Existing tracked files are unaffected; this only matters for **new** files.
 
 ### Release/version bump checklist
 - Update versions consistently:
@@ -148,6 +149,8 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `create_primitive` — Create primitive GameObjects (Cube, Sphere, Capsule, Cylinder, Plane, Quad)
 - `create_tag` — Create new tags in the Unity Tag Manager
 - `remove_component` — Remove components from GameObjects
+- `set_rect_transform` — Set RectTransform layout with presets (stretch, center, top-left, etc.) and raw property overrides
+- `save_as_prefab` — Save existing scene GameObjects as prefab assets with variant support
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
