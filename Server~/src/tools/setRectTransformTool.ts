@@ -100,11 +100,23 @@ async function toolHandler(mcpUnity: McpUnity, params: any): Promise<CallToolRes
     );
   }
 
+  // Include structured RectTransform state in response for programmatic use
+  let text = response.message || 'RectTransform updated';
+  if (response.data?.rectTransform) {
+    const rt = response.data.rectTransform;
+    text += `\n\nCurrent state:`;
+    text += `\n  anchoredPosition: (${rt.anchoredPosition.x}, ${rt.anchoredPosition.y})`;
+    text += `\n  sizeDelta: (${rt.sizeDelta.x}, ${rt.sizeDelta.y})`;
+    text += `\n  anchorMin: (${rt.anchorMin.x}, ${rt.anchorMin.y})`;
+    text += `\n  anchorMax: (${rt.anchorMax.x}, ${rt.anchorMax.y})`;
+    text += `\n  pivot: (${rt.pivot.x}, ${rt.pivot.y})`;
+  }
+
   return {
     content: [
       {
         type: response.type,
-        text: response.message
+        text
       }
     ]
   };

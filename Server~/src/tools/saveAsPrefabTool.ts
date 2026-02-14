@@ -63,10 +63,21 @@ async function toolHandler(mcpUnity: McpUnity, params: any): Promise<CallToolRes
     );
   }
 
+  // Build response text including structured data for programmatic use
+  let text = response.message || 'Prefab saved successfully';
+  if (response.data) {
+    text += `\n\nPrefab path: ${response.data.prefabPath}`;
+    text += `\nInstance ID: ${response.data.instanceId}`;
+    text += `\nIs variant: ${response.data.isVariant}`;
+    if (response.data.basePrefabPath) {
+      text += `\nBase prefab: ${response.data.basePrefabPath}`;
+    }
+  }
+
   return {
     content: [{
       type: response.type,
-      text: response.message
+      text
     }]
   };
 }

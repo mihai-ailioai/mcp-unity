@@ -122,7 +122,12 @@ namespace McpUnity.Tools
                 // automatically create a variant)
                 if (isSourcePrefabInstance && !variant)
                 {
-                    PrefabUtility.UnpackPrefabInstance(gameObject, PrefabUnpackMode.OutermostRoot, InteractionMode.UserAction);
+                    // UnpackPrefabInstance requires the prefab instance root, not a child
+                    GameObject instanceRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(gameObject);
+                    if (instanceRoot != null)
+                    {
+                        PrefabUtility.UnpackPrefabInstance(instanceRoot, PrefabUnpackMode.OutermostRoot, InteractionMode.UserAction);
+                    }
                 }
 
                 PrefabUtility.SaveAsPrefabAssetAndConnect(gameObject, targetPrefabPath, InteractionMode.UserAction, out bool success);
