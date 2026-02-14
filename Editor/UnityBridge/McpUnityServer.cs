@@ -411,6 +411,18 @@ namespace McpUnity.Unity
             GetMaterialInfoTool getMaterialInfoTool = new GetMaterialInfoTool();
             _tools.Add(getMaterialInfoTool.Name, getMaterialInfoTool);
 
+            // Register CreatePrimitiveTool
+            CreatePrimitiveTool createPrimitiveTool = new CreatePrimitiveTool();
+            _tools.Add(createPrimitiveTool.Name, createPrimitiveTool);
+
+            // Register CreateTagTool
+            CreateTagTool createTagTool = new CreateTagTool();
+            _tools.Add(createTagTool.Name, createTagTool);
+
+            // Register RemoveComponentTool
+            RemoveComponentTool removeComponentTool = new RemoveComponentTool();
+            _tools.Add(removeComponentTool.Name, removeComponentTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);

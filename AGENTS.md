@@ -145,6 +145,9 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `assign_material` — Assign materials to Renderer components
 - `modify_material` — Modify material properties (colors, floats, textures)
 - `get_material_info` — Get material details including all properties
+- `create_primitive` — Create primitive GameObjects (Cube, Sphere, Capsule, Cylinder, Plane, Quad)
+- `create_tag` — Create new tags in the Unity Tag Manager
+- `remove_component` — Remove components from GameObjects
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items

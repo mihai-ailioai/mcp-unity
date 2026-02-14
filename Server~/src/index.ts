@@ -24,6 +24,9 @@ import { registerGetGameObjectTool } from './tools/getGameObjectTool.js';
 import { registerTransformTools } from './tools/transformTools.js';
 import { registerCreateMaterialTool, registerAssignMaterialTool, registerModifyMaterialTool, registerGetMaterialInfoTool } from './tools/materialTools.js';
 import { registerDuplicateGameObjectTool, registerDeleteGameObjectTool, registerReparentGameObjectTool } from './tools/gameObjectTools.js';
+import { registerCreatePrimitiveTool } from './tools/createPrimitiveTool.js';
+import { registerCreateTagTool } from './tools/createTagTool.js';
+import { registerRemoveComponentTool } from './tools/removeComponentTool.js';
 import { registerBatchExecuteTool } from './tools/batchExecuteTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
@@ -87,6 +90,9 @@ registerCreateMaterialTool(server, mcpUnity, toolLogger);
 registerAssignMaterialTool(server, mcpUnity, toolLogger);
 registerModifyMaterialTool(server, mcpUnity, toolLogger);
 registerGetMaterialInfoTool(server, mcpUnity, toolLogger);
+registerCreatePrimitiveTool(server, mcpUnity, toolLogger);
+registerCreateTagTool(server, mcpUnity, toolLogger);
+registerRemoveComponentTool(server, mcpUnity, toolLogger);
 
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);
