@@ -86,7 +86,7 @@ namespace McpUnity.Tools
             // If component not found, try to add it
             if (component == null)
             {
-                Type componentType = FindComponentType(componentName);
+                Type componentType = SerializedFieldUtils.FindType(componentName, typeof(Component));
                 if (componentType == null)
                 {
                     return McpUnitySocketHandler.CreateErrorResponse(
@@ -179,63 +179,6 @@ namespace McpUnity.Tools
             }
             
             // Not found
-            return null;
-        }
-        
-        /// <summary>
-        /// Find a component type by name
-        /// </summary>
-        /// <param name="componentName">The name of the component type</param>
-        /// <returns>The component type, or null if not found</returns>
-        private Type FindComponentType(string componentName)
-        {
-            // First try direct match
-            Type type = Type.GetType(componentName);
-            if (type != null && typeof(Component).IsAssignableFrom(type))
-            {
-                return type;
-            }
-            
-            // Try common Unity namespaces
-            string[] commonNamespaces = new string[] 
-            {
-                "UnityEngine",
-                "UnityEngine.UI",
-                "UnityEngine.EventSystems",
-                "UnityEngine.Animations",
-                "UnityEngine.Rendering",
-                "TMPro"
-            };
-            
-            foreach (string ns in commonNamespaces)
-            {
-                type = Type.GetType($"{ns}.{componentName}, UnityEngine");
-                if (type != null && typeof(Component).IsAssignableFrom(type))
-                {
-                    return type;
-                }
-            }
-            
-            // Try assemblies search
-            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    foreach (Type t in assembly.GetTypes())
-                    {
-                        if (t.Name == componentName && typeof(Component).IsAssignableFrom(t))
-                        {
-                            return t;
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                    // Some assemblies might throw exceptions when getting types
-                    continue;
-                }
-            }
-            
             return null;
         }
         
@@ -541,7 +484,7 @@ namespace McpUnity.Tools
                 if (!string.IsNullOrEmpty(componentTypeName))
                 {
                     // Explicit componentType override - find that specific type
-                    Type requestedType = FindComponentType(componentTypeName);
+                    Type requestedType = SerializedFieldUtils.FindType(componentTypeName, typeof(Component));
                     if (requestedType == null)
                     {
                         throw new Exception($"Component type '{componentTypeName}' not found");
@@ -587,7 +530,7 @@ namespace McpUnity.Tools
             string baseComponentType = refDescriptor["componentType"]?.ToObject<string>();
             if (!string.IsNullOrEmpty(baseComponentType))
             {
-                Type requestedType = FindComponentType(baseComponentType);
+                Type requestedType = SerializedFieldUtils.FindType(baseComponentType, typeof(Component));
                 if (requestedType == null)
                 {
                     throw new Exception($"Component type '{baseComponentType}' not found");
