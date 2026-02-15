@@ -456,6 +456,13 @@ namespace McpUnity.Unity
             DeleteAssetTool deleteAssetTool = new DeleteAssetTool();
             _tools.Add(deleteAssetTool.Name, deleteAssetTool);
 
+            // Register Import Settings Tools
+            GetImportSettingsTool getImportSettingsTool = new GetImportSettingsTool();
+            _tools.Add(getImportSettingsTool.Name, getImportSettingsTool);
+
+            UpdateImportSettingsTool updateImportSettingsTool = new UpdateImportSettingsTool();
+            _tools.Add(updateImportSettingsTool.Name, updateImportSettingsTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);

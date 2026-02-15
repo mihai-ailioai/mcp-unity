@@ -36,6 +36,8 @@ import { registerMoveAssetTool } from './tools/moveAssetTool.js';
 import { registerRenameAssetTool } from './tools/renameAssetTool.js';
 import { registerCopyAssetTool } from './tools/copyAssetTool.js';
 import { registerDeleteAssetTool } from './tools/deleteAssetTool.js';
+import { registerGetImportSettingsTool } from './tools/getImportSettingsTool.js';
+import { registerUpdateImportSettingsTool } from './tools/updateImportSettingsTool.js';
 import { registerBatchExecuteTool } from './tools/batchExecuteTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
@@ -111,6 +113,8 @@ registerMoveAssetTool(server, mcpUnity, toolLogger);
 registerRenameAssetTool(server, mcpUnity, toolLogger);
 registerCopyAssetTool(server, mcpUnity, toolLogger);
 registerDeleteAssetTool(server, mcpUnity, toolLogger);
+registerGetImportSettingsTool(server, mcpUnity, toolLogger);
+registerUpdateImportSettingsTool(server, mcpUnity, toolLogger);
 
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);
