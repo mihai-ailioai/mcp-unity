@@ -155,6 +155,10 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `create_scriptable_object` — Create ScriptableObject assets with optional initial field values
 - `get_scriptable_object` — Read all user-defined field values from a ScriptableObject asset by path or GUID
 - `update_scriptable_object` — Update fields on existing ScriptableObject assets by path or GUID
+- `move_asset` — Move/relocate assets to a new path in the AssetDatabase (auto-creates destination folders)
+- `rename_asset` — Rename assets in-place via AssetDatabase
+- `copy_asset` — Copy assets to a new path (optional auto-generated unique path)
+- `delete_asset` — Delete assets via AssetDatabase (trash by default, optional permanent delete)
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
