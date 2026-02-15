@@ -125,7 +125,8 @@ namespace McpUnity.Tools
                 return null;
             }
 
-            string resolvedPath = assetPath;
+            // Normalize backslashes to forward slashes for cross-platform consistency
+            string resolvedPath = assetPath?.Replace("\\", "/");
 
             if (!string.IsNullOrEmpty(guid))
             {
@@ -139,11 +140,11 @@ namespace McpUnity.Tools
                     return null;
                 }
 
-                if (!string.IsNullOrEmpty(assetPath) &&
-                    !string.Equals(assetPath, pathFromGuid, StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrEmpty(resolvedPath) &&
+                    !string.Equals(resolvedPath, pathFromGuid, StringComparison.OrdinalIgnoreCase))
                 {
                     error = McpUnitySocketHandler.CreateErrorResponse(
-                        $"Provided assetPath '{assetPath}' does not match GUID '{guid}' which resolves to '{pathFromGuid}'",
+                        $"Provided assetPath '{resolvedPath}' does not match GUID '{guid}' which resolves to '{pathFromGuid}'",
                         "validation_error"
                     );
                     return null;
