@@ -74,7 +74,16 @@ namespace McpUnity.Tools
                 ApplyPlatformOverrides(importer, platformOverrides, updated, errors);
             }
 
-            // Save and reimport
+            // If nothing was successfully updated, don't reimport
+            if (errors.Count > 0 && updated.Count == 0)
+            {
+                return McpUnitySocketHandler.CreateErrorResponse(
+                    $"All settings failed to apply:\n{string.Join("\n", errors)}",
+                    "update_error"
+                );
+            }
+
+            // Save and reimport only if at least one setting was applied
             try
             {
                 importer.SaveAndReimport();
@@ -84,14 +93,6 @@ namespace McpUnity.Tools
                 return McpUnitySocketHandler.CreateErrorResponse(
                     $"Failed to save and reimport: {ex.Message}",
                     "reimport_error"
-                );
-            }
-
-            if (errors.Count > 0 && updated.Count == 0)
-            {
-                return McpUnitySocketHandler.CreateErrorResponse(
-                    $"All settings failed to apply:\n{string.Join("\n", errors)}",
-                    "update_error"
                 );
             }
 
@@ -170,17 +171,27 @@ namespace McpUnity.Tools
                     if (propType.IsValueType && !propType.IsPrimitive && !propType.IsEnum
                         && propValue.Type == JTokenType.Object)
                     {
+                        int errorsBefore = errors.Count;
                         object currentStruct = propertyInfo.GetValue(importer);
                         object updatedStruct = ApplyJsonToStruct(currentStruct, propType, (JObject)propValue, errors, propName);
                         propertyInfo.SetValue(importer, updatedStruct);
+
+                        // Only count as fully updated if no sub-field errors occurred
+                        if (errors.Count == errorsBefore)
+                        {
+                            updated.Add(propName);
+                        }
+                        else
+                        {
+                            updated.Add($"{propName} (partial)");
+                        }
                     }
                     else
                     {
                         object value = SerializedFieldUtils.ConvertJTokenToValue(propValue, propType);
                         propertyInfo.SetValue(importer, value);
+                        updated.Add(propName);
                     }
-
-                    updated.Add(propName);
                 }
                 catch (Exception ex)
                 {
@@ -274,6 +285,8 @@ namespace McpUnity.Tools
 
                 try
                 {
+                    int errorsBefore = errors.Count;
+
                     // Read current settings for this platform
                     TextureImporterPlatformSettings currentSettings = importer.GetPlatformTextureSettings(platform);
 
@@ -291,7 +304,15 @@ namespace McpUnity.Tools
                     }
 
                     importer.SetPlatformTextureSettings(typedSettings);
-                    updated.Add($"platformOverrides.{platform}");
+
+                    if (errors.Count == errorsBefore)
+                    {
+                        updated.Add($"platformOverrides.{platform}");
+                    }
+                    else
+                    {
+                        updated.Add($"platformOverrides.{platform} (partial)");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -314,6 +335,8 @@ namespace McpUnity.Tools
 
                 try
                 {
+                    int errorsBefore = errors.Count;
+
                     // Read current settings for this platform
                     AudioImporterSampleSettings currentSettings = importer.GetOverrideSampleSettings(platform);
 
@@ -329,9 +352,13 @@ namespace McpUnity.Tools
                     {
                         errors.Add($"SetOverrideSampleSettings returned false for platform '{platform}'");
                     }
-                    else
+                    else if (errors.Count == errorsBefore)
                     {
                         updated.Add($"platformOverrides.{platform}");
+                    }
+                    else
+                    {
+                        updated.Add($"platformOverrides.{platform} (partial)");
                     }
                 }
                 catch (Exception ex)
