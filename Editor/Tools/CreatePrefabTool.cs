@@ -97,37 +97,12 @@ namespace McpUnity.Tools
 
         private Component AddComponent(GameObject gameObject, string componentName)
         {
-            // Find the script type
-            Type scriptType = Type.GetType($"{componentName}, Assembly-CSharp");
-            if (scriptType == null)
-            {
-                // Try with just the class name
-                scriptType = Type.GetType(componentName);
-            }
-                
-            if (scriptType == null)
-            {
-                // Try to find the type using AppDomain
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    scriptType = assembly.GetType(componentName);
-                    if (scriptType != null)
-                        break;
-                }
-            }
-                
-            // Throw an error if the type was not found
+            Type scriptType = SerializedFieldUtils.FindType(componentName, typeof(Component));
             if (scriptType == null)
             {
                 return null;
             }
-                
-            // Check if the type is a MonoBehaviour
-            if (!typeof(MonoBehaviour).IsAssignableFrom(scriptType))
-            {
-                return null;
-            }
-            
+
             return gameObject.AddComponent(scriptType);
         }
 

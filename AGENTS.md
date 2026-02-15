@@ -152,6 +152,9 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `remove_component` — Remove components from GameObjects
 - `set_rect_transform` — Set RectTransform layout with presets (stretch, center, top-left, etc.) and raw property overrides
 - `save_as_prefab` — Save existing scene GameObjects as prefab assets with variant support
+- `create_scriptable_object` — Create ScriptableObject assets with optional initial field values
+- `get_scriptable_object` — Read all user-defined field values from a ScriptableObject asset by path or GUID
+- `update_scriptable_object` — Update fields on existing ScriptableObject assets by path or GUID
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items

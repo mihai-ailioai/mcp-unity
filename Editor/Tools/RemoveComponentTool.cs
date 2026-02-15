@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using McpUnity.Unity;
 using McpUnity.Utils;
 using UnityEngine;
@@ -66,7 +65,7 @@ namespace McpUnity.Tools
             Component component = gameObject.GetComponent(componentName);
             if (component == null)
             {
-                Type componentType = FindComponentType(componentName);
+                Type componentType = SerializedFieldUtils.FindType(componentName, typeof(Component));
                 if (componentType != null)
                 {
                     component = gameObject.GetComponent(componentType);
@@ -103,46 +102,5 @@ namespace McpUnity.Tools
             };
         }
 
-        private Type FindComponentType(string componentName)
-        {
-            string[] commonNamespaces = new string[]
-            {
-                "UnityEngine",
-                "UnityEngine.UI",
-                "UnityEngine.EventSystems",
-                "UnityEngine.Animations",
-                "UnityEngine.Rendering",
-                "TMPro"
-            };
-
-            foreach (string ns in commonNamespaces)
-            {
-                Type type = Type.GetType($"{ns}.{componentName}, UnityEngine");
-                if (type != null && typeof(Component).IsAssignableFrom(type))
-                {
-                    return type;
-                }
-            }
-
-            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    foreach (Type t in assembly.GetTypes())
-                    {
-                        if (t.Name == componentName && typeof(Component).IsAssignableFrom(t))
-                        {
-                            return t;
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                    continue;
-                }
-            }
-
-            return null;
-        }
     }
 }

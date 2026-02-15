@@ -14,6 +14,13 @@ For setting references to scene objects (GameObjects, Components, MonoBehaviours
   { "$ref": "scene", "instanceId": 12345 }
   { "$ref": "scene", "objectPath": "Path/To/Object", "componentType": "Camera" }
 
+For setting references to asset objects (ScriptableObjects, Prefabs, Materials, Textures, etc.):
+  { "$ref": "asset", "assetPath": "Assets/Path/To/Asset.ext" }
+  { "$ref": "asset", "guid": "a1b2c3d4e5f6..." }
+  { "$ref": "asset", "assetPath": "Assets/Prefabs/Enemy.prefab", "componentType": "EnemyAI" }
+
+If both assetPath and guid are provided in a $ref, they must point to the same asset.
+
 When componentType is omitted, the type is inferred from the field's declared type.
 When the field type is GameObject, the GameObject itself is returned.
 When the field type is a Component subclass, GetComponent is called automatically using the field type.
