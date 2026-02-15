@@ -159,6 +159,8 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `rename_asset` — Rename assets in-place via AssetDatabase
 - `copy_asset` — Copy assets to a new path (optional auto-generated unique path)
 - `delete_asset` — Delete assets via AssetDatabase (trash by default, optional permanent delete)
+- `get_import_settings` — Read import settings from any asset's AssetImporter (includes platform overrides for texture/audio)
+- `update_import_settings` — Update import settings on any AssetImporter via reflection, with platform override support for TextureImporter and AudioImporter
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
