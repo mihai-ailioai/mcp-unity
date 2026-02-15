@@ -271,6 +271,10 @@ namespace McpUnity.Unity
 
             EditorGUILayout.Space();
 
+            ShowConfigButton("OpenCode", McpUtils.AddToOpenCodeConfig);
+
+            EditorGUILayout.Space();
+
             ShowConfigButton("GitHub Copilot", McpUtils.AddToGitHubCopilotConfig);
 
             EditorGUILayout.Space();

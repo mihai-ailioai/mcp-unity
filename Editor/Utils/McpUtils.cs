@@ -83,6 +83,49 @@ namespace McpUnity.Utils
         }
 
         /// <summary>
+        /// Generates the MCP configuration JSON for OpenCode.
+        /// OpenCode uses a different schema: { "$schema": "...", "mcp": { "mcp-unity": { "type": "local", "command": ["node", "path"] } } }
+        /// </summary>
+        public static string GenerateOpenCodeConfigJson(bool useTabsIndentation)
+        {
+            string indexJsPath = Path.Combine(GetServerPath(), "build", "index.js").Replace("\\", "/");
+
+            var config = new JObject
+            {
+                ["$schema"] = "https://opencode.ai/config.json",
+                ["mcp"] = new JObject
+                {
+                    ["mcp-unity"] = new JObject
+                    {
+                        ["type"] = "local",
+                        ["command"] = new JArray("node", indexJsPath)
+                    }
+                }
+            };
+
+            var stringWriter = new StringWriter();
+            using (var jsonWriter = new JsonTextWriter(stringWriter))
+            {
+                jsonWriter.Formatting = Formatting.Indented;
+
+                if (useTabsIndentation)
+                {
+                    jsonWriter.IndentChar = '\t';
+                    jsonWriter.Indentation = 1;
+                }
+                else
+                {
+                    jsonWriter.IndentChar = ' ';
+                    jsonWriter.Indentation = 2;
+                }
+
+                config.WriteTo(jsonWriter);
+            }
+
+            return stringWriter.ToString();
+        }
+
+        /// <summary>
         /// Gets the absolute path to the Server directory containing package.json (root server dir).
         /// Works whether MCP Unity is installed via Package Manager or directly in the Assets folder
         /// </summary>
@@ -249,6 +292,16 @@ namespace McpUnity.Utils
         {
             string configFilePath = GetCodexCliConfigPath();
             return AddToTomlConfigFile(configFilePath, "Codex CLI");
+        }
+
+        /// <summary>
+        /// Adds the MCP configuration to the OpenCode config file (opencode.json in project root).
+        /// OpenCode uses a different JSON schema from other clients, with "mcp" instead of "mcpServers".
+        /// </summary>
+        public static bool AddToOpenCodeConfig(bool useTabsIndentation)
+        {
+            string configFilePath = GetOpenCodeConfigPath();
+            return AddToOpenCodeConfigFile(configFilePath, useTabsIndentation, "OpenCode");
         }
 
         /// <summary>
@@ -490,6 +543,17 @@ namespace McpUnity.Utils
             }
             
             return Path.Combine(homeDir, ".codex", "config.toml");
+        }
+
+        /// <summary>
+        /// Gets the path to the OpenCode config file (project-root opencode.json)
+        /// </summary>
+        /// <returns>The path to the OpenCode config file</returns>
+        private static string GetOpenCodeConfigPath()
+        {
+            // OpenCode uses opencode.json in the Unity project root
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            return Path.Combine(projectRoot, "opencode.json");
         }
 
         /// <summary>
@@ -748,6 +812,80 @@ namespace McpUnity.Utils
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Adds MCP configuration to an OpenCode config file.
+        /// OpenCode uses a different JSON schema: "mcp" key instead of "mcpServers", and "command" as an array.
+        /// </summary>
+        private static bool AddToOpenCodeConfigFile(string configFilePath, bool useTabsIndentation, string productName)
+        {
+            if (string.IsNullOrEmpty(configFilePath))
+            {
+                Debug.LogError($"{productName} config file path could not be determined.");
+                return false;
+            }
+
+            try
+            {
+                string openCodeJson = GenerateOpenCodeConfigJson(useTabsIndentation);
+
+                if (File.Exists(configFilePath))
+                {
+                    return TryMergeOpenCodeConfig(configFilePath, openCodeJson, productName);
+                }
+                else
+                {
+                    // Project root always exists, so create the file directly
+                    File.WriteAllText(configFilePath, openCodeJson);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to add MCP configuration to {productName}: {ex}");
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Merges the mcp-unity entry into an existing OpenCode config file,
+        /// preserving all other settings and MCP server entries.
+        /// </summary>
+        private static bool TryMergeOpenCodeConfig(string configFilePath, string openCodeJson, string productName)
+        {
+            string existingJson = File.ReadAllText(configFilePath);
+            JObject existingConfig = string.IsNullOrEmpty(existingJson) ? new JObject() : JObject.Parse(existingJson);
+            JObject newConfig = JObject.Parse(openCodeJson);
+
+            // Ensure "mcp" object exists
+            if (existingConfig["mcp"] == null)
+            {
+                existingConfig["mcp"] = new JObject();
+            }
+
+            // Add or update the mcp-unity server config under "mcp"
+            JToken mcpUnityEntry = newConfig["mcp"]?["mcp-unity"];
+            if (mcpUnityEntry != null)
+            {
+                ((JObject)existingConfig["mcp"])["mcp-unity"] = mcpUnityEntry;
+            }
+
+            // Preserve or set the $schema
+            if (existingConfig["$schema"] == null && newConfig["$schema"] != null)
+            {
+                // Insert $schema at the beginning by rebuilding
+                var ordered = new JObject { ["$schema"] = newConfig["$schema"] };
+                foreach (var prop in existingConfig.Properties())
+                {
+                    ordered[prop.Name] = prop.Value;
+                }
+                existingConfig = ordered;
+            }
+
+            File.WriteAllText(configFilePath, existingConfig.ToString(Formatting.Indented));
+            return true;
         }
 
         /// <summary>
