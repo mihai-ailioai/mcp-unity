@@ -24,7 +24,7 @@ namespace McpUnity.Tools
         // Known platform names for reading overrides
         private static readonly string[] PlatformNames = new string[]
         {
-            "Standalone", "Android", "iPhone", "WebGL", "Windows Store Apps",
+            "Standalone", "Android", "iPhone", "iOS", "WebGL", "Windows Store Apps",
             "PS4", "PS5", "XboxOne", "GameCoreScarlett", "Nintendo Switch", "tvOS", "LinuxHeadlessSimulation"
         };
 
@@ -229,7 +229,7 @@ namespace McpUnity.Tools
                 catch { }
             }
 
-            // Read public writable properties (some structs expose settings as properties)
+            // Read public readable properties (some structs expose settings as properties)
             foreach (PropertyInfo prop in structType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (!prop.CanRead || prop.GetIndexParameters().Length > 0) continue;
@@ -271,10 +271,17 @@ namespace McpUnity.Tools
 
             foreach (string platform in PlatformNames)
             {
-                TextureImporterPlatformSettings platformSettings = importer.GetPlatformTextureSettings(platform);
-                if (platformSettings.overridden)
+                try
                 {
-                    overrides[platform] = SerializeStructToJObject(platformSettings, typeof(TextureImporterPlatformSettings));
+                    TextureImporterPlatformSettings platformSettings = importer.GetPlatformTextureSettings(platform);
+                    if (platformSettings.overridden)
+                    {
+                        overrides[platform] = SerializeStructToJObject(platformSettings, typeof(TextureImporterPlatformSettings));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    McpLogger.LogError($"[MCP Unity] Error reading texture platform override for '{platform}': {ex.Message}");
                 }
             }
 
@@ -287,10 +294,17 @@ namespace McpUnity.Tools
 
             foreach (string platform in PlatformNames)
             {
-                if (importer.ContainsSampleSettingsOverride(platform))
+                try
                 {
-                    AudioImporterSampleSettings sampleSettings = importer.GetOverrideSampleSettings(platform);
-                    overrides[platform] = SerializeStructToJObject(sampleSettings, typeof(AudioImporterSampleSettings));
+                    if (importer.ContainsSampleSettingsOverride(platform))
+                    {
+                        AudioImporterSampleSettings sampleSettings = importer.GetOverrideSampleSettings(platform);
+                        overrides[platform] = SerializeStructToJObject(sampleSettings, typeof(AudioImporterSampleSettings));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    McpLogger.LogError($"[MCP Unity] Error reading audio platform override for '{platform}': {ex.Message}");
                 }
             }
 
