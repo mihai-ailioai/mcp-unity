@@ -22,10 +22,10 @@ namespace McpUnity.Tools
         {
             string assetPath = parameters["assetPath"]?.ToObject<string>()?.Trim();
             string guid = parameters["guid"]?.ToObject<string>()?.Trim();
-            string destinationPath = parameters["destinationPath"]?.ToObject<string>()?.Trim();
+            string destinationPath = parameters["destinationPath"]?.ToObject<string>()?.Trim()?.Replace("\\", "/");
 
             // Resolve source asset
-            string resolvedPath = ResolveAssetPath(assetPath, guid, out string resolvedGuid, out JObject error);
+            string resolvedPath = ResolveAssetPath(assetPath, guid, out _, out JObject error);
             if (error != null) return error;
 
             // Validate destination
@@ -62,15 +62,15 @@ namespace McpUnity.Tools
                 );
             }
 
-            // Ensure destination directory exists
-            string destDir = Path.GetDirectoryName(destinationPath)?.Replace("\\", "/");
-            if (!string.IsNullOrEmpty(destDir) && !AssetDatabase.IsValidFolder(destDir))
-            {
-                CreateFolderRecursive(destDir);
-            }
-
             try
             {
+                // Ensure destination directory exists
+                string destDir = Path.GetDirectoryName(destinationPath)?.Replace("\\", "/");
+                if (!string.IsNullOrEmpty(destDir) && !AssetDatabase.IsValidFolder(destDir))
+                {
+                    CreateFolderRecursive(destDir);
+                }
+
                 string result = AssetDatabase.MoveAsset(resolvedPath, destinationPath);
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -180,7 +180,11 @@ namespace McpUnity.Tools
             }
 
             string folderName = Path.GetFileName(folderPath);
-            AssetDatabase.CreateFolder(parent, folderName);
+            string result = AssetDatabase.CreateFolder(parent, folderName);
+            if (string.IsNullOrEmpty(result))
+            {
+                throw new InvalidOperationException($"Failed to create folder '{folderPath}' (parent: '{parent}')");
+            }
         }
     }
 }
