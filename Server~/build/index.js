@@ -41,31 +41,24 @@ import { registerGetAssetsResource } from './resources/getAssetsResource.js';
 import { registerGetTestsResource } from './resources/getTestsResource.js';
 import { registerGetGameObjectResource } from './resources/getGameObjectResource.js';
 import { registerGameObjectHandlingPrompt } from './prompts/gameobjectHandlingPrompt.js';
-
 // Initialize loggers
 const serverLogger = new Logger('Server', LogLevel.INFO);
 const unityLogger = new Logger('Unity', LogLevel.INFO);
 const toolLogger = new Logger('Tools', LogLevel.INFO);
 const resourceLogger = new Logger('Resources', LogLevel.INFO);
-
 // Initialize the MCP server
-const server = new McpServer (
-  {
+const server = new McpServer({
     name: "MCP Unity Server",
     version: "1.0.0"
-  },
-  {
+}, {
     capabilities: {
-      tools: {},
-      resources: {},
-      prompts: {},
+        tools: {},
+        resources: {},
+        prompts: {},
     },
-  }
-);
-
+});
 // Initialize MCP HTTP bridge with Unity editor
 const mcpUnity = new McpUnity(unityLogger);
-
 // Register all tools into the MCP server
 registerMenuItemTool(server, mcpUnity, toolLogger);
 registerSelectGameObjectTool(server, mcpUnity, toolLogger);
@@ -89,7 +82,6 @@ registerTransformTools(server, mcpUnity, toolLogger);
 registerDuplicateGameObjectTool(server, mcpUnity, toolLogger);
 registerDeleteGameObjectTool(server, mcpUnity, toolLogger);
 registerReparentGameObjectTool(server, mcpUnity, toolLogger);
-
 // Register Material Tools
 registerCreateMaterialTool(server, mcpUnity, toolLogger);
 registerAssignMaterialTool(server, mcpUnity, toolLogger);
@@ -103,10 +95,8 @@ registerSaveAsPrefabTool(server, mcpUnity, toolLogger);
 registerCreateScriptableObjectTool(server, mcpUnity, toolLogger);
 registerGetScriptableObjectTool(server, mcpUnity, toolLogger);
 registerUpdateScriptableObjectTool(server, mcpUnity, toolLogger);
-
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);
-
 // Register all resources into the MCP server
 registerGetTestsResource(server, mcpUnity, resourceLogger);
 registerGetGameObjectResource(server, mcpUnity, resourceLogger);
@@ -115,76 +105,65 @@ registerGetConsoleLogsResource(server, mcpUnity, resourceLogger);
 registerGetHierarchyResource(server, mcpUnity, resourceLogger);
 registerGetPackagesResource(server, mcpUnity, resourceLogger);
 registerGetAssetsResource(server, mcpUnity, resourceLogger);
-
 // Register all prompts into the MCP server
 registerGameObjectHandlingPrompt(server);
-
 // Server startup function
 async function startServer() {
-  try {
-    // Initialize STDIO transport for MCP client communication
-    const stdioTransport = new StdioServerTransport();
-    
-    // Connect the server to the transport
-    await server.connect(stdioTransport);
-
-    serverLogger.info('MCP Server started');
-    
-    // Get the client name from the MCP server
-    const clientName = server.server.getClientVersion()?.name || 'Unknown MCP Client';
-    serverLogger.info(`Connected MCP client: ${clientName}`);
-    
-    // Start Unity Bridge connection with client name in headers
-    await mcpUnity.start(clientName);
-    
-  } catch (error) {
-    serverLogger.error('Failed to start server', error);
-    process.exit(1);
-  }
+    try {
+        // Initialize STDIO transport for MCP client communication
+        const stdioTransport = new StdioServerTransport();
+        // Connect the server to the transport
+        await server.connect(stdioTransport);
+        serverLogger.info('MCP Server started');
+        // Get the client name from the MCP server
+        const clientName = server.server.getClientVersion()?.name || 'Unknown MCP Client';
+        serverLogger.info(`Connected MCP client: ${clientName}`);
+        // Start Unity Bridge connection with client name in headers
+        await mcpUnity.start(clientName);
+    }
+    catch (error) {
+        serverLogger.error('Failed to start server', error);
+        process.exit(1);
+    }
 }
-
 // Graceful shutdown handler
 let isShuttingDown = false;
 async function shutdown() {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
-
-  try {
-    serverLogger.info('Shutting down...');
-    await mcpUnity.stop();
-    await server.close();
-  } catch (error) {
-    // Ignore errors during shutdown
-  }
-  process.exit(0);
+    if (isShuttingDown)
+        return;
+    isShuttingDown = true;
+    try {
+        serverLogger.info('Shutting down...');
+        await mcpUnity.stop();
+        await server.close();
+    }
+    catch (error) {
+        // Ignore errors during shutdown
+    }
+    process.exit(0);
 }
-
 // Start the server
 startServer();
-
 // Handle shutdown signals
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('SIGHUP', shutdown);
-
 // Handle stdin close (when MCP client disconnects)
 process.stdin.on('close', shutdown);
 process.stdin.on('end', shutdown);
 process.stdin.on('error', shutdown);
-
 // Handle uncaught exceptions - exit cleanly if it's just a closed pipe
-process.on('uncaughtException', (error: NodeJS.ErrnoException) => {
-  // EPIPE/EOF errors are expected when the MCP client disconnects
-  if (error.code === 'EPIPE' || error.code === 'EOF' || error.code === 'ERR_USE_AFTER_CLOSE') {
-    shutdown();
-    return;
-  }
-  serverLogger.error('Uncaught exception', error);
-  process.exit(1);
+process.on('uncaughtException', (error) => {
+    // EPIPE/EOF errors are expected when the MCP client disconnects
+    if (error.code === 'EPIPE' || error.code === 'EOF' || error.code === 'ERR_USE_AFTER_CLOSE') {
+        shutdown();
+        return;
+    }
+    serverLogger.error('Uncaught exception', error);
+    process.exit(1);
 });
-
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason) => {
-  serverLogger.error('Unhandled rejection', reason);
-  process.exit(1);
+    serverLogger.error('Unhandled rejection', reason);
+    process.exit(1);
 });

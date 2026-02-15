@@ -189,6 +189,229 @@ namespace McpUnity.Tools
         }
 
         /// <summary>
+        /// Read all user-defined serialized fields from a Unity object into a JObject.
+        /// Only includes fields declared on the concrete type (not inherited from base Unity classes).
+        /// Follows Unity serialization rules: public fields (unless [NonSerialized]) and [SerializeField] private fields.
+        /// UnityEngine.Object references are serialized as $ref descriptors for round-trippability.
+        /// </summary>
+        /// <param name="target">The Unity object to read fields from</param>
+        /// <returns>A JObject containing all readable user-defined fields</returns>
+        public static JObject ReadFieldsToJson(UnityEngine.Object target)
+        {
+            if (target == null)
+            {
+                return new JObject();
+            }
+
+            JObject result = new JObject();
+            Type targetType = target.GetType();
+
+            // Get fields declared on the concrete type and its user-defined base classes
+            // Stop at ScriptableObject/MonoBehaviour/Component/Object boundaries
+            Type[] stopTypes = new Type[]
+            {
+                typeof(ScriptableObject),
+                typeof(MonoBehaviour),
+                typeof(Component),
+                typeof(UnityEngine.Object)
+            };
+
+            Type currentType = targetType;
+            while (currentType != null && Array.IndexOf(stopTypes, currentType) < 0)
+            {
+                FieldInfo[] fields = currentType.GetFields(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+
+                foreach (FieldInfo field in fields)
+                {
+                    // Skip backing fields for auto-properties
+                    if (field.Name.StartsWith("<"))
+                    {
+                        continue;
+                    }
+
+                    // Match Unity serialization rules:
+                    // Include: public fields (unless [NonSerialized]), private fields with [SerializeField]
+                    // Exclude: [NonSerialized] fields, [HideInInspector] fields
+                    bool isPublic = field.IsPublic;
+                    bool hasSerializeField = field.GetCustomAttribute<SerializeField>() != null;
+                    bool hasNonSerialized = field.GetCustomAttribute<NonSerializedAttribute>() != null;
+
+                    if (hasNonSerialized)
+                    {
+                        continue;
+                    }
+
+                    if (!isPublic && !hasSerializeField)
+                    {
+                        continue;
+                    }
+
+                    // Skip if already added by a derived class
+                    if (result.ContainsKey(field.Name))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        object value = field.GetValue(target);
+                        result[field.Name] = ConvertValueToJToken(value, field.FieldType);
+                    }
+                    catch (Exception ex)
+                    {
+                        McpLogger.LogError($"[MCP Unity] Error reading field '{field.Name}' on {targetType.Name}: {ex.Message}");
+                        result[field.Name] = null;
+                    }
+                }
+
+                currentType = currentType.BaseType;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Convert a C# value to a JToken for JSON serialization.
+        /// UnityEngine.Object references are serialized as $ref descriptors.
+        /// </summary>
+        private static JToken ConvertValueToJToken(object value, Type fieldType)
+        {
+            if (value == null)
+            {
+                return JValue.CreateNull();
+            }
+
+            // Handle UnityEngine.Object references as $ref descriptors
+            if (value is UnityEngine.Object unityObj)
+            {
+                // Check if it's a null Unity object (destroyed or missing reference)
+                if (unityObj == null)
+                {
+                    return JValue.CreateNull();
+                }
+
+                string assetPath = AssetDatabase.GetAssetPath(unityObj);
+
+                // Asset reference (has a valid asset path)
+                if (!string.IsNullOrEmpty(assetPath))
+                {
+                    string guid = AssetDatabase.AssetPathToGUID(assetPath);
+                    var refObj = new JObject
+                    {
+                        ["$ref"] = "asset",
+                        ["assetPath"] = assetPath,
+                        ["guid"] = guid
+                    };
+                    // Include type info for clarity
+                    refObj["typeName"] = unityObj.GetType().Name;
+                    return refObj;
+                }
+
+                // Scene reference (no asset path — it's a scene object)
+                var sceneRef = new JObject
+                {
+                    ["$ref"] = "scene",
+                    ["instanceId"] = unityObj.GetInstanceID()
+                };
+
+                if (unityObj is Component comp)
+                {
+                    sceneRef["objectPath"] = GetGameObjectPath(comp.gameObject);
+                    sceneRef["componentType"] = comp.GetType().Name;
+                }
+                else if (unityObj is GameObject go)
+                {
+                    sceneRef["objectPath"] = GetGameObjectPath(go);
+                }
+
+                sceneRef["typeName"] = unityObj.GetType().Name;
+                return sceneRef;
+            }
+
+            // Handle Unity value types
+            if (value is Vector2 v2)
+            {
+                return new JObject { ["x"] = v2.x, ["y"] = v2.y };
+            }
+            if (value is Vector3 v3)
+            {
+                return new JObject { ["x"] = v3.x, ["y"] = v3.y, ["z"] = v3.z };
+            }
+            if (value is Vector4 v4)
+            {
+                return new JObject { ["x"] = v4.x, ["y"] = v4.y, ["z"] = v4.z, ["w"] = v4.w };
+            }
+            if (value is Quaternion q)
+            {
+                return new JObject { ["x"] = q.x, ["y"] = q.y, ["z"] = q.z, ["w"] = q.w };
+            }
+            if (value is Color c)
+            {
+                return new JObject { ["r"] = c.r, ["g"] = c.g, ["b"] = c.b, ["a"] = c.a };
+            }
+            if (value is Bounds b)
+            {
+                return new JObject
+                {
+                    ["center"] = new JObject { ["x"] = b.center.x, ["y"] = b.center.y, ["z"] = b.center.z },
+                    ["size"] = new JObject { ["x"] = b.size.x, ["y"] = b.size.y, ["z"] = b.size.z }
+                };
+            }
+            if (value is Rect r)
+            {
+                return new JObject { ["x"] = r.x, ["y"] = r.y, ["width"] = r.width, ["height"] = r.height };
+            }
+
+            // Enums — serialize as string
+            if (fieldType.IsEnum)
+            {
+                return value.ToString();
+            }
+
+            // Handle arrays and lists — recurse into elements for proper $ref handling
+            if (value is System.Collections.IList list)
+            {
+                Type elementType = fieldType.IsArray
+                    ? fieldType.GetElementType()
+                    : (fieldType.IsGenericType ? fieldType.GetGenericArguments()[0] : typeof(object));
+
+                var arr = new JArray();
+                foreach (object item in list)
+                {
+                    arr.Add(ConvertValueToJToken(item, elementType));
+                }
+                return arr;
+            }
+
+            // Primitives and strings — let JToken handle it
+            try
+            {
+                return JToken.FromObject(value);
+            }
+            catch (Exception)
+            {
+                // For complex types that can't be serialized, return type info
+                return $"[{fieldType.Name}]";
+            }
+        }
+
+        /// <summary>
+        /// Get the full hierarchy path of a GameObject
+        /// </summary>
+        private static string GetGameObjectPath(GameObject go)
+        {
+            string path = go.name;
+            Transform parent = go.transform.parent;
+            while (parent != null)
+            {
+                path = parent.name + "/" + path;
+                parent = parent.parent;
+            }
+            return path;
+        }
+
+        /// <summary>
         /// Convert a JToken to a value of the specified type
         /// </summary>
         /// <param name="token">The JToken to convert</param>
