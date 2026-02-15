@@ -32,6 +32,10 @@ import { registerSaveAsPrefabTool } from './tools/saveAsPrefabTool.js';
 import { registerCreateScriptableObjectTool } from './tools/createScriptableObjectTool.js';
 import { registerGetScriptableObjectTool } from './tools/getScriptableObjectTool.js';
 import { registerUpdateScriptableObjectTool } from './tools/updateScriptableObjectTool.js';
+import { registerMoveAssetTool } from './tools/moveAssetTool.js';
+import { registerRenameAssetTool } from './tools/renameAssetTool.js';
+import { registerCopyAssetTool } from './tools/copyAssetTool.js';
+import { registerDeleteAssetTool } from './tools/deleteAssetTool.js';
 import { registerBatchExecuteTool } from './tools/batchExecuteTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
@@ -103,6 +107,10 @@ registerSaveAsPrefabTool(server, mcpUnity, toolLogger);
 registerCreateScriptableObjectTool(server, mcpUnity, toolLogger);
 registerGetScriptableObjectTool(server, mcpUnity, toolLogger);
 registerUpdateScriptableObjectTool(server, mcpUnity, toolLogger);
+registerMoveAssetTool(server, mcpUnity, toolLogger);
+registerRenameAssetTool(server, mcpUnity, toolLogger);
+registerCopyAssetTool(server, mcpUnity, toolLogger);
+registerDeleteAssetTool(server, mcpUnity, toolLogger);
 
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);

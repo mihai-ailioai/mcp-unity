@@ -443,6 +443,19 @@ namespace McpUnity.Unity
             UpdateScriptableObjectTool updateScriptableObjectTool = new UpdateScriptableObjectTool();
             _tools.Add(updateScriptableObjectTool.Name, updateScriptableObjectTool);
 
+            // Register Asset Management Tools
+            MoveAssetTool moveAssetTool = new MoveAssetTool();
+            _tools.Add(moveAssetTool.Name, moveAssetTool);
+
+            RenameAssetTool renameAssetTool = new RenameAssetTool();
+            _tools.Add(renameAssetTool.Name, renameAssetTool);
+
+            CopyAssetTool copyAssetTool = new CopyAssetTool();
+            _tools.Add(copyAssetTool.Name, copyAssetTool);
+
+            DeleteAssetTool deleteAssetTool = new DeleteAssetTool();
+            _tools.Add(deleteAssetTool.Name, deleteAssetTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
