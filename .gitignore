@@ -121,3 +121,4 @@ Server~/node_modules/*
 .bmad-core/
 .windsurf/
 .logs/
+docs/plans/
