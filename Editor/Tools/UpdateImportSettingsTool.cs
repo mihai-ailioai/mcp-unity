@@ -219,8 +219,19 @@ namespace McpUnity.Tools
                 {
                     try
                     {
-                        object value = SerializedFieldUtils.ConvertJTokenToValue(prop.Value, field.FieldType);
-                        field.SetValue(boxed, value);
+                        // Nested struct: recurse with read-modify-write to preserve unspecified fields
+                        if (field.FieldType.IsValueType && !field.FieldType.IsPrimitive && !field.FieldType.IsEnum
+                            && prop.Value.Type == JTokenType.Object)
+                        {
+                            object currentNested = field.GetValue(boxed);
+                            object updatedNested = ApplyJsonToStruct(currentNested, field.FieldType, (JObject)prop.Value, errors, $"{parentPropName}.{prop.Name}");
+                            field.SetValue(boxed, updatedNested);
+                        }
+                        else
+                        {
+                            object value = SerializedFieldUtils.ConvertJTokenToValue(prop.Value, field.FieldType);
+                            field.SetValue(boxed, value);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -235,8 +246,19 @@ namespace McpUnity.Tools
                 {
                     try
                     {
-                        object value = SerializedFieldUtils.ConvertJTokenToValue(prop.Value, propInfo.PropertyType);
-                        propInfo.SetValue(boxed, value);
+                        // Nested struct: recurse with read-modify-write to preserve unspecified fields
+                        if (propInfo.PropertyType.IsValueType && !propInfo.PropertyType.IsPrimitive && !propInfo.PropertyType.IsEnum
+                            && prop.Value.Type == JTokenType.Object)
+                        {
+                            object currentNested = propInfo.GetValue(boxed);
+                            object updatedNested = ApplyJsonToStruct(currentNested, propInfo.PropertyType, (JObject)prop.Value, errors, $"{parentPropName}.{prop.Name}");
+                            propInfo.SetValue(boxed, updatedNested);
+                        }
+                        else
+                        {
+                            object value = SerializedFieldUtils.ConvertJTokenToValue(prop.Value, propInfo.PropertyType);
+                            propInfo.SetValue(boxed, value);
+                        }
                     }
                     catch (Exception ex)
                     {
