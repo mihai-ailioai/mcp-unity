@@ -7,8 +7,15 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 const toolName = 'batch_execute';
 const toolDescription = `Executes multiple tool operations in a single batch request.
-Reduces network round-trips and enables atomic operations with rollback support.
-Performance improvement: 10-100x for repetitive operations.`;
+STRONGLY PREFER this tool over individual calls when performing 3+ related operations — e.g. building a UI hierarchy, setting up multiple components, creating several assets.
+Each operation specifies a tool name and params, executed sequentially in Unity.
+Use stopOnError=true (default) to halt on first failure. Use atomic=true to roll back all changes on failure via Unity Undo.
+Example: create a button with batch_execute([
+  {tool:"update_gameobject", params:{name:"Button_Play", parentPath:"Canvas"}},
+  {tool:"update_component", params:{objectPath:"Canvas/Button_Play", componentType:"Button", componentData:{}}},
+  {tool:"update_component", params:{objectPath:"Canvas/Button_Play", componentType:"Image", componentData:{color:{r:0.2,g:0.6,b:1,a:1}}}},
+  {tool:"set_rect_transform", params:{objectPath:"Canvas/Button_Play", preset:"center", sizeDelta:{x:200,y:50}}}
+])`;
 
 const operationSchema = z.object({
   tool: z.string().describe('The name of the tool to execute'),
