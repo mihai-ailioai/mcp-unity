@@ -335,25 +335,26 @@ namespace McpUnity.Services
             // Wrap entire coroutine to guarantee progress bar cleanup
             bool progressBarActive = true;
             
-            // Phase 1: Collect
-            EditorUtility.DisplayProgressBar("Supermemory Indexing", "Collecting scripts...", 0f);
+            // Phase 1: Collect (synchronous — no yield, so progress bar won't repaint between calls)
+            EditorUtility.DisplayProgressBar("Supermemory Indexing", "Collecting assets...", 0f);
             
             scripts = CollectScripts(searchFolder);
             allDocs.AddRange(scripts);
             McpLogger.LogInfo($"[Supermemory] Collected {scripts.Count} scripts from {searchFolder}");
             
-            EditorUtility.DisplayProgressBar("Supermemory Indexing", "Collecting prefabs...", 0.1f);
             prefabs = CollectPrefabs(searchFolder);
             allDocs.AddRange(prefabs);
             McpLogger.LogInfo($"[Supermemory] Collected {prefabs.Count} prefabs from {searchFolder}");
             
             if (includeScenes)
             {
-                EditorUtility.DisplayProgressBar("Supermemory Indexing", "Collecting scenes (this may take a while)...", 0.2f);
                 var scenes = CollectScenes(searchFolder);
                 allDocs.AddRange(scenes);
-                McpLogger.LogInfo($"[Supermemory] Collected {scenes.Count} scenes");
+                McpLogger.LogInfo($"[Supermemory] Collected {scenes.Count} scenes from {searchFolder}");
             }
+            
+            // Yield once so the progress bar actually renders before pushing
+            yield return null;
             
             if (allDocs.Count == 0)
             {
