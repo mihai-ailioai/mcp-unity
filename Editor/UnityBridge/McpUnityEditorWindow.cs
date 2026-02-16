@@ -1,5 +1,6 @@
 using System;
 using McpUnity.Utils;
+using McpUnity.Services;
 using UnityEngine;
 using UnityEditor;
 
@@ -24,6 +25,7 @@ namespace McpUnity.Unity
         private bool _tabsIndentationJson = false;
         private Vector2 _helpTabScrollPosition = Vector2.zero;
         private Vector2 _serverTabScrollPosition = Vector2.zero;
+        private string _supermemoryApiKeyInput = string.Empty;
 
         [MenuItem("Tools/MCP Unity/Server Window", false, 1)]
         public static void ShowWindow()
@@ -296,9 +298,107 @@ namespace McpUnity.Unity
                 McpUnityServer.Instance.InstallServer();
                 McpLogger.LogInfo("MCP Unity Server installed successfully.");
             }
+
+            DrawSupermemorySection();
             
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawSupermemorySection()
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Supermemory Integration", EditorStyles.boldLabel);
+            
+            McpUnitySettings settings = McpUnitySettings.Instance;
+            
+            // API Key status + input
+            bool hasEnvKey = SupermemoryIndexer.IsApiKeyFromEnvironment();
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("API Key", GUILayout.Width(120));
+            
+            if (hasEnvKey)
+            {
+                GUI.enabled = false;
+                EditorGUILayout.PasswordField("••••••••••••", GUILayout.ExpandWidth(true));
+                GUI.enabled = true;
+                
+                GUIStyle envStyle = new GUIStyle(EditorStyles.miniLabel);
+                envStyle.normal.textColor = Color.green;
+                EditorGUILayout.LabelField("Using env var", envStyle, GUILayout.Width(80));
+            }
+            else
+            {
+                string newKey = EditorGUILayout.PasswordField(
+                    _supermemoryApiKeyInput, GUILayout.ExpandWidth(true));
+                if (newKey != _supermemoryApiKeyInput)
+                {
+                    _supermemoryApiKeyInput = newKey;
+                    SupermemoryIndexer.SessionApiKey = newKey;
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+            
+            if (!hasEnvKey)
+            {
+                EditorGUILayout.HelpBox(
+                    "Set SUPERMEMORY_API_KEY environment variable for persistent configuration. " +
+                    "The key entered above is only kept in memory for this editor session.",
+                    MessageType.Info);
+            }
+            
+            EditorGUILayout.Space();
+            
+            // Container tag
+            string newContainerTag = EditorGUILayout.TextField(
+                new GUIContent("Container Tag", 
+                    $"Scopes indexed data in supermemory. Default: 'unity-{Application.productName}'"),
+                settings.SupermemoryContainerTag);
+            if (newContainerTag != settings.SupermemoryContainerTag)
+            {
+                settings.SupermemoryContainerTag = newContainerTag;
+                settings.SaveSettings();
+            }
+            
+            EditorGUILayout.LabelField($"Effective tag: {SupermemoryIndexer.GetContainerTag()}", 
+                EditorStyles.miniLabel);
+            
+            EditorGUILayout.Space();
+            
+            // Include scenes toggle
+            bool newIndexScenes = EditorGUILayout.Toggle(
+                new GUIContent("Include Scenes", 
+                    "Include scene files when indexing. Scenes are opened additively which can be slow for large projects."),
+                settings.SupermemoryIndexScenes);
+            if (newIndexScenes != settings.SupermemoryIndexScenes)
+            {
+                settings.SupermemoryIndexScenes = newIndexScenes;
+                settings.SaveSettings();
+            }
+            
+            EditorGUILayout.Space();
+            
+            // Index button
+            GUI.enabled = SupermemoryIndexer.HasApiKey;
+            string buttonLabel = string.IsNullOrEmpty(settings.SupermemoryLastIndexedTimestamp) 
+                ? "Index Project" 
+                : "Re-index Project";
+            if (GUILayout.Button(buttonLabel, GUILayout.Height(30)))
+            {
+                SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes);
+            }
+            GUI.enabled = true;
+            
+            // Last indexed timestamp
+            if (!string.IsNullOrEmpty(settings.SupermemoryLastIndexedTimestamp))
+            {
+                if (DateTime.TryParse(settings.SupermemoryLastIndexedTimestamp, out DateTime lastIndexed))
+                {
+                    EditorGUILayout.LabelField($"Last indexed: {lastIndexed.ToLocalTime():g}", 
+                        EditorStyles.miniLabel);
+                }
+            }
         }
         
         private void DrawHelpTab()

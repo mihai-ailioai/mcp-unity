@@ -40,6 +40,15 @@ namespace McpUnity.Unity
         [Tooltip("Allow connections from remote MCP bridges. When disabled, only localhost connections are allowed (default).")]
         public bool AllowRemoteConnections = false;
 
+        [Tooltip("Optional: Custom container tag for supermemory indexing. Defaults to 'unity-{ProductName}'.")]
+        public string SupermemoryContainerTag = string.Empty;
+        
+        [Tooltip("Whether to include scene files when indexing to supermemory (can be slow for large scenes).")]
+        public bool SupermemoryIndexScenes = false;
+        
+        [Tooltip("Timestamp of the last successful supermemory indexing operation.")]
+        public string SupermemoryLastIndexedTimestamp = string.Empty;
+
         /// <summary>
         /// Singleton instance of settings
         /// </summary>
