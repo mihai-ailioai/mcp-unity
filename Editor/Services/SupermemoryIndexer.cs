@@ -370,6 +370,97 @@ namespace McpUnity.Services
                 yield break;
             }
             
+            // Phase 1.5: Fetch existing content hashes from supermemory to skip unchanged docs
+            EditorUtility.DisplayProgressBar("Supermemory Indexing", "Checking for changes...", 0.15f);
+            var existingHashes = new Dictionary<string, string>();
+            int listPage = 1;
+            bool hasMorePages = true;
+            
+            while (hasMorePages)
+            {
+                JObject listBody = new JObject
+                {
+                    ["containerTags"] = new JArray { containerTag },
+                    ["limit"] = 200,
+                    ["page"] = listPage
+                };
+                
+                string listJson = listBody.ToString(Newtonsoft.Json.Formatting.None);
+                byte[] listBytes = Encoding.UTF8.GetBytes(listJson);
+                
+                var listRequest = new UnityEngine.Networking.UnityWebRequest($"{ApiBaseUrl}/documents/list", "POST");
+                listRequest.uploadHandler = new UnityEngine.Networking.UploadHandlerRaw(listBytes);
+                listRequest.downloadHandler = new UnityEngine.Networking.DownloadHandlerBuffer();
+                listRequest.timeout = 15;
+                listRequest.SetRequestHeader("Content-Type", "application/json");
+                listRequest.SetRequestHeader("Authorization", $"Bearer {apiKey}");
+                
+                var listOp = listRequest.SendWebRequest();
+                while (!listOp.isDone)
+                    yield return null;
+                
+                if (listRequest.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                {
+                    try
+                    {
+                        JObject listResponse = JObject.Parse(listRequest.downloadHandler.text);
+                        JArray memories = listResponse["memories"] as JArray;
+                        if (memories != null)
+                        {
+                            foreach (JObject mem in memories)
+                            {
+                                string customId = mem["customId"]?.ToString();
+                                string hash = mem["metadata"]?["contentHash"]?.ToString();
+                                if (!string.IsNullOrEmpty(customId) && !string.IsNullOrEmpty(hash))
+                                {
+                                    existingHashes[customId] = hash;
+                                }
+                            }
+                        }
+                        
+                        JObject pagination = listResponse["pagination"] as JObject;
+                        int totalPages = pagination?["totalPages"]?.Value<int>() ?? 1;
+                        hasMorePages = listPage < totalPages;
+                        listPage++;
+                    }
+                    catch (Exception ex)
+                    {
+                        McpLogger.LogWarning($"[Supermemory] Failed to parse document list (page {listPage}): {ex.Message}");
+                        hasMorePages = false; // proceed without filtering
+                    }
+                }
+                else
+                {
+                    McpLogger.LogWarning($"[Supermemory] Failed to fetch existing documents: {listRequest.responseCode} {listRequest.error}. Will re-index all.");
+                    hasMorePages = false; // proceed without filtering
+                }
+                
+                listRequest.Dispose();
+            }
+            
+            // Filter out unchanged documents
+            int originalCount = allDocs.Count;
+            if (existingHashes.Count > 0)
+            {
+                allDocs.RemoveAll(doc => 
+                    existingHashes.TryGetValue(doc.CustomId, out string existingHash) && 
+                    existingHash == doc.ContentHash);
+            }
+            int skippedCount = originalCount - allDocs.Count;
+            if (skippedCount > 0)
+            {
+                McpLogger.LogInfo($"[Supermemory] Skipped {skippedCount} unchanged documents");
+            }
+            
+            if (allDocs.Count == 0)
+            {
+                EditorUtility.ClearProgressBar();
+                progressBarActive = false;
+                EditorUtility.DisplayDialog("Supermemory", 
+                    $"All {originalCount} documents are up to date. Nothing to re-index.", "OK");
+                yield break;
+            }
+            
             // Phase 2: Push in batches
             int totalDocs = allDocs.Count;
             int batchCount = 0;
@@ -458,8 +549,9 @@ namespace McpUnity.Services
             int scriptCount = scripts?.Count ?? 0;
             int prefabCount = prefabs?.Count ?? 0;
             string scenePart = includeScenes ? $", {allDocs.FindAll(d => d.Type == "scene").Count} scenes" : "";
-            string summary = $"Indexed {scriptCount} scripts, {prefabCount} prefabs{scenePart}.\n\n" +
-                             $"Success: {totalSuccess}, Failed: {totalFailed}\n" +
+            string skippedPart = skippedCount > 0 ? $", Skipped (unchanged): {skippedCount}" : "";
+            string summary = $"Found {originalCount} assets ({scriptCount} scripts, {prefabCount} prefabs{scenePart}).\n\n" +
+                             $"Pushed: {totalSuccess}, Failed: {totalFailed}{skippedPart}\n" +
                              $"Container tag: {containerTag}";
             
             if (totalFailed > 0)
