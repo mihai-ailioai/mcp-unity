@@ -330,6 +330,14 @@ namespace McpUnity.Unity
             }
             else
             {
+                // Re-sync session key on every draw — static field is lost on domain reload
+                // but this instance field survives since the window stays open
+                if (!string.IsNullOrEmpty(_supermemoryApiKeyInput) && 
+                    SupermemoryIndexer.SessionApiKey != _supermemoryApiKeyInput)
+                {
+                    SupermemoryIndexer.SessionApiKey = _supermemoryApiKeyInput;
+                }
+                
                 string newKey = EditorGUILayout.PasswordField(
                     _supermemoryApiKeyInput, GUILayout.ExpandWidth(true));
                 if (newKey != _supermemoryApiKeyInput)
@@ -407,12 +415,12 @@ namespace McpUnity.Unity
             {
                 SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolder);
             }
+            GUI.enabled = true;
             
             if (GUILayout.Button("Check Processing Status"))
             {
                 SupermemoryIndexer.CheckProcessingStatus();
             }
-            GUI.enabled = true;
             
             // Last indexed timestamp
             if (!string.IsNullOrEmpty(settings.SupermemoryLastIndexedTimestamp))
