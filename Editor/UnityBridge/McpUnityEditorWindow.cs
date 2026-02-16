@@ -417,6 +417,11 @@ namespace McpUnity.Unity
             }
             GUI.enabled = true;
             
+            if (GUILayout.Button("Check for Changes"))
+            {
+                SupermemoryIndexer.CheckForChanges(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolder);
+            }
+            
             if (GUILayout.Button("Check Processing Status"))
             {
                 SupermemoryIndexer.CheckProcessingStatus();

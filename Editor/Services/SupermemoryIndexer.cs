@@ -566,6 +566,152 @@ namespace McpUnity.Services
         }
         
         /// <summary>
+        /// Check for changes without pushing. Collects local assets, fetches existing hashes,
+        /// and reports how many are new, changed, or unchanged.
+        /// </summary>
+        public static void CheckForChanges(bool includeScenes, string indexFolder)
+        {
+            string apiKey = GetApiKey();
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                EditorUtility.DisplayDialog("Supermemory", "No API key found.", "OK");
+                return;
+            }
+            
+            string searchFolder = ResolveSearchFolder(indexFolder);
+            if (!AssetDatabase.IsValidFolder(searchFolder))
+            {
+                EditorUtility.DisplayDialog("Supermemory", 
+                    $"Folder '{searchFolder}' does not exist in the project.", "OK");
+                return;
+            }
+            
+            EditorCoroutineUtility.StartCoroutineOwnerless(CheckForChangesCoroutine(includeScenes, apiKey, searchFolder));
+        }
+        
+        private static IEnumerator CheckForChangesCoroutine(bool includeScenes, string apiKey, string searchFolder)
+        {
+            string containerTag = GetContainerTag();
+            
+            EditorUtility.DisplayProgressBar("Supermemory", "Collecting local assets...", 0f);
+            
+            var allDocs = new List<IndexDocument>();
+            allDocs.AddRange(CollectScripts(searchFolder));
+            allDocs.AddRange(CollectPrefabs(searchFolder));
+            if (includeScenes)
+                allDocs.AddRange(CollectScenes(searchFolder));
+            
+            yield return null;
+            
+            // Fetch existing hashes
+            EditorUtility.DisplayProgressBar("Supermemory", "Fetching remote hashes...", 0.3f);
+            var existingHashes = new Dictionary<string, string>();
+            int listPage = 1;
+            bool hasMorePages = true;
+            
+            while (hasMorePages)
+            {
+                JObject listBody = new JObject
+                {
+                    ["containerTags"] = new JArray { containerTag },
+                    ["limit"] = 200,
+                    ["page"] = listPage
+                };
+                
+                string listJson = listBody.ToString(Newtonsoft.Json.Formatting.None);
+                byte[] listBytes = Encoding.UTF8.GetBytes(listJson);
+                
+                var listRequest = new UnityEngine.Networking.UnityWebRequest($"{ApiBaseUrl}/documents/list", "POST");
+                listRequest.uploadHandler = new UnityEngine.Networking.UploadHandlerRaw(listBytes);
+                listRequest.downloadHandler = new UnityEngine.Networking.DownloadHandlerBuffer();
+                listRequest.timeout = 15;
+                listRequest.SetRequestHeader("Content-Type", "application/json");
+                listRequest.SetRequestHeader("Authorization", $"Bearer {apiKey}");
+                
+                var listOp = listRequest.SendWebRequest();
+                while (!listOp.isDone)
+                    yield return null;
+                
+                if (listRequest.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                {
+                    try
+                    {
+                        JObject listResponse = JObject.Parse(listRequest.downloadHandler.text);
+                        JArray memories = listResponse["memories"] as JArray;
+                        if (memories != null)
+                        {
+                            foreach (JObject mem in memories)
+                            {
+                                string customId = mem["customId"]?.ToString();
+                                string hash = mem["metadata"]?["contentHash"]?.ToString();
+                                if (!string.IsNullOrEmpty(customId) && !string.IsNullOrEmpty(hash))
+                                    existingHashes[customId] = hash;
+                            }
+                        }
+                        
+                        JObject pagination = listResponse["pagination"] as JObject;
+                        int totalPages = pagination?["totalPages"]?.Value<int>() ?? 1;
+                        hasMorePages = listPage < totalPages;
+                        listPage++;
+                    }
+                    catch (Exception ex)
+                    {
+                        McpLogger.LogWarning($"[Supermemory] Failed to parse list response: {ex.Message}");
+                        hasMorePages = false;
+                    }
+                }
+                else
+                {
+                    EditorUtility.ClearProgressBar();
+                    EditorUtility.DisplayDialog("Supermemory", 
+                        $"Failed to fetch remote documents: {listRequest.responseCode} {listRequest.error}", "OK");
+                    listRequest.Dispose();
+                    yield break;
+                }
+                
+                listRequest.Dispose();
+            }
+            
+            EditorUtility.ClearProgressBar();
+            
+            // Compare
+            int unchanged = 0;
+            int changed = 0;
+            int newDocs = 0;
+            int noHashRemote = 0;
+            
+            foreach (var doc in allDocs)
+            {
+                if (existingHashes.TryGetValue(doc.CustomId, out string remoteHash))
+                {
+                    if (remoteHash == doc.ContentHash)
+                        unchanged++;
+                    else
+                        changed++;
+                }
+                else
+                {
+                    newDocs++;
+                }
+            }
+            
+            // Check if remote has docs with no contentHash metadata
+            noHashRemote = existingHashes.Count(kvp => string.IsNullOrEmpty(kvp.Value));
+            
+            string summary = $"Local: {allDocs.Count} assets, Remote: {existingHashes.Count} documents\n\n" +
+                             $"Unchanged: {unchanged}\n" +
+                             $"Changed: {changed}\n" +
+                             $"New (not in remote): {newDocs}";
+            
+            if (changed == 0 && newDocs == 0)
+                summary += "\n\nEverything is up to date.";
+            else
+                summary += $"\n\nRe-indexing would push {changed + newDocs} document(s).";
+            
+            EditorUtility.DisplayDialog("Supermemory — Change Check", summary, "OK");
+        }
+        
+        /// <summary>
         /// Check how many documents are still being processed by supermemory.
         /// Runs as an editor coroutine.
         /// </summary>
