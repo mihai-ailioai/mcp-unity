@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using McpUnity.Resources;
@@ -696,7 +697,7 @@ namespace McpUnity.Services
             }
             
             // Check if remote has docs with no contentHash metadata
-            noHashRemote = existingHashes.Count(kvp => string.IsNullOrEmpty(kvp.Value));
+            noHashRemote = existingHashes.Values.Count(v => string.IsNullOrEmpty(v));
             
             string summary = $"Local: {allDocs.Count} assets, Remote: {existingHashes.Count} documents\n\n" +
                              $"Unchanged: {unchanged}\n" +
