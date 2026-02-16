@@ -66,8 +66,15 @@ namespace McpUnity.Services
         {
             string userTag = McpUnity.Unity.McpUnitySettings.Instance.SupermemoryContainerTag;
             if (!string.IsNullOrEmpty(userTag))
-                return SanitizeContainerTag(userTag);
-            return SanitizeContainerTag($"unity-{Application.productName}");
+            {
+                string sanitized = SanitizeContainerTag(userTag);
+                if (!string.IsNullOrEmpty(sanitized))
+                    return sanitized;
+            }
+            
+            string defaultTag = SanitizeContainerTag($"unity-{Application.productName}");
+            // Fallback if product name sanitizes to empty (e.g. all symbols)
+            return string.IsNullOrEmpty(defaultTag) ? "unity-project" : defaultTag;
         }
         
         /// <summary>
@@ -211,13 +218,19 @@ namespace McpUnity.Services
             {
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 
+                var scene = default(UnityEngine.SceneManagement.Scene);
+                bool sceneOpened = false;
                 try
                 {
                     // Open scene additively to read hierarchy
-                    var scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
+                    scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
                         assetPath, 
                         UnityEditor.SceneManagement.OpenSceneMode.Additive
                     );
+                    sceneOpened = scene.IsValid();
+                    
+                    // Capture scene name BEFORE closing (struct may lose data after close)
+                    string sceneName = scene.name;
                     
                     JArray rootObjects = new JArray();
                     foreach (var rootGo in scene.GetRootGameObjects())
@@ -227,10 +240,11 @@ namespace McpUnity.Services
                     
                     // Close the additively loaded scene
                     UnityEditor.SceneManagement.EditorSceneManager.CloseScene(scene, true);
+                    sceneOpened = false;
                     
                     JObject sceneDoc = new JObject
                     {
-                        ["sceneName"] = scene.name,
+                        ["sceneName"] = sceneName,
                         ["rootObjects"] = rootObjects
                     };
                     
@@ -248,6 +262,14 @@ namespace McpUnity.Services
                 catch (Exception ex)
                 {
                     McpLogger.LogError($"[Supermemory] Failed to process scene {assetPath}: {ex.Message}");
+                }
+                finally
+                {
+                    // Ensure additively opened scene is always closed to prevent leaks
+                    if (sceneOpened && scene.IsValid() && scene.isLoaded)
+                    {
+                        UnityEditor.SceneManagement.EditorSceneManager.CloseScene(scene, true);
+                    }
                 }
             }
             
@@ -278,17 +300,22 @@ namespace McpUnity.Services
             string containerTag = GetContainerTag();
             int totalSuccess = 0;
             int totalFailed = 0;
+            var allDocs = new List<IndexDocument>();
+            List<IndexDocument> scripts = null;
+            List<IndexDocument> prefabs = null;
+            
+            // Wrap entire coroutine to guarantee progress bar cleanup
+            bool progressBarActive = true;
             
             // Phase 1: Collect
             EditorUtility.DisplayProgressBar("Supermemory Indexing", "Collecting scripts...", 0f);
-            var allDocs = new List<IndexDocument>();
             
-            var scripts = CollectScripts();
+            scripts = CollectScripts();
             allDocs.AddRange(scripts);
             McpLogger.LogInfo($"[Supermemory] Collected {scripts.Count} scripts");
             
             EditorUtility.DisplayProgressBar("Supermemory Indexing", "Collecting prefabs...", 0.1f);
-            var prefabs = CollectPrefabs();
+            prefabs = CollectPrefabs();
             allDocs.AddRange(prefabs);
             McpLogger.LogInfo($"[Supermemory] Collected {prefabs.Count} prefabs");
             
@@ -303,6 +330,7 @@ namespace McpUnity.Services
             if (allDocs.Count == 0)
             {
                 EditorUtility.ClearProgressBar();
+                progressBarActive = false;
                 EditorUtility.DisplayDialog("Supermemory", "No assets found to index.", "OK");
                 yield break;
             }
@@ -349,6 +377,7 @@ namespace McpUnity.Services
                 var request = new UnityEngine.Networking.UnityWebRequest($"{ApiBaseUrl}/documents/batch", "POST");
                 request.uploadHandler = new UnityEngine.Networking.UploadHandlerRaw(bodyBytes);
                 request.downloadHandler = new UnityEngine.Networking.DownloadHandlerBuffer();
+                request.timeout = 30; // 30 second timeout per batch request
                 request.SetRequestHeader("Content-Type", "application/json");
                 request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
                 
@@ -379,7 +408,11 @@ namespace McpUnity.Services
                 }
             }
             
-            EditorUtility.ClearProgressBar();
+            if (progressBarActive)
+            {
+                EditorUtility.ClearProgressBar();
+                progressBarActive = false;
+            }
             
             // Update timestamp
             McpUnity.Unity.McpUnitySettings.Instance.SupermemoryLastIndexedTimestamp = 
@@ -387,13 +420,17 @@ namespace McpUnity.Services
             McpUnity.Unity.McpUnitySettings.Instance.SaveSettings();
             
             // Summary
+            int scriptCount = scripts?.Count ?? 0;
+            int prefabCount = prefabs?.Count ?? 0;
             string scenePart = includeScenes ? $", {allDocs.FindAll(d => d.Type == "scene").Count} scenes" : "";
-            string summary = $"Indexed {scripts.Count} scripts, {prefabs.Count} prefabs{scenePart}.\n\n" +
+            string summary = $"Indexed {scriptCount} scripts, {prefabCount} prefabs{scenePart}.\n\n" +
                              $"Success: {totalSuccess}, Failed: {totalFailed}\n" +
                              $"Container tag: {containerTag}";
             
             if (totalFailed > 0)
+            {
                 summary += "\n\nCheck the Console for error details.";
+            }
             
             EditorUtility.DisplayDialog("Supermemory Indexing Complete", summary, "OK");
         }
