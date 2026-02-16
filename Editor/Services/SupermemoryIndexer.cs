@@ -157,9 +157,12 @@ namespace McpUnity.Services
                     
                 try
                 {
-                    string content = File.ReadAllText(assetPath);
-                    if (string.IsNullOrWhiteSpace(content))
+                    string fileContent = File.ReadAllText(assetPath);
+                    if (string.IsNullOrWhiteSpace(fileContent))
                         continue;
+                    
+                    // Prepend file path so it's part of the searchable/returned content
+                    string content = $"// File: {assetPath}\n{fileContent}";
                         
                     docs.Add(new IndexDocument
                     {
@@ -201,6 +204,8 @@ namespace McpUnity.Services
                     if (summary == null)
                         continue;
                     
+                    // Prepend asset path so it's part of the searchable/returned content
+                    summary["assetPath"] = assetPath;
                     string content = summary.ToString(Newtonsoft.Json.Formatting.None);
                     
                     docs.Add(new IndexDocument
@@ -260,6 +265,7 @@ namespace McpUnity.Services
                     
                     JObject sceneDoc = new JObject
                     {
+                        ["assetPath"] = assetPath,
                         ["sceneName"] = sceneName,
                         ["rootObjects"] = rootObjects
                     };
