@@ -366,6 +366,25 @@ namespace McpUnity.Unity
             
             EditorGUILayout.Space();
             
+            // Index folder
+            string newIndexFolder = EditorGUILayout.TextField(
+                new GUIContent("Index Folder", 
+                    "Subfolder under Assets/ to index (e.g. 'Game/Test'). Leave empty to index all of Assets/."),
+                settings.SupermemoryIndexFolder);
+            if (newIndexFolder != settings.SupermemoryIndexFolder)
+            {
+                settings.SupermemoryIndexFolder = newIndexFolder;
+                settings.SaveSettings();
+            }
+            
+            if (!string.IsNullOrWhiteSpace(settings.SupermemoryIndexFolder))
+            {
+                EditorGUILayout.LabelField($"Will index: Assets/{settings.SupermemoryIndexFolder.Trim().TrimStart('/').TrimEnd('/')}", 
+                    EditorStyles.miniLabel);
+            }
+            
+            EditorGUILayout.Space();
+            
             // Include scenes toggle
             bool newIndexScenes = EditorGUILayout.Toggle(
                 new GUIContent("Include Scenes", 
@@ -386,7 +405,7 @@ namespace McpUnity.Unity
                 : "Re-index Project";
             if (GUILayout.Button(buttonLabel, GUILayout.Height(30)))
             {
-                SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes);
+                SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolder);
             }
             GUI.enabled = true;
             

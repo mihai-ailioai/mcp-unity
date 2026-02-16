@@ -43,6 +43,9 @@ namespace McpUnity.Unity
         [Tooltip("Optional: Custom container tag for supermemory indexing. Defaults to 'unity-{ProductName}'.")]
         public string SupermemoryContainerTag = string.Empty;
         
+        [Tooltip("Optional: Subfolder under Assets/ to index (e.g. 'Game/Test'). Empty means all of Assets/.")]
+        public string SupermemoryIndexFolder = string.Empty;
+        
         [Tooltip("Whether to include scene files when indexing to supermemory (can be slow for large scenes).")]
         public bool SupermemoryIndexScenes = false;
         
