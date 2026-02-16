@@ -407,6 +407,11 @@ namespace McpUnity.Unity
             {
                 SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolder);
             }
+            
+            if (GUILayout.Button("Check Processing Status"))
+            {
+                SupermemoryIndexer.CheckProcessingStatus();
+            }
             GUI.enabled = true;
             
             // Last indexed timestamp

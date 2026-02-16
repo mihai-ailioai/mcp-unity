@@ -461,7 +461,92 @@ namespace McpUnity.Services
                 summary += "\n\nCheck the Console for error details.";
             }
             
+            summary += "\n\nNote: Documents may take a few minutes to finish processing " +
+                       "and become searchable. Use 'Check Processing Status' to monitor progress.";
+            
             EditorUtility.DisplayDialog("Supermemory Indexing Complete", summary, "OK");
+        }
+        
+        /// <summary>
+        /// Check how many documents are still being processed by supermemory.
+        /// Runs as an editor coroutine.
+        /// </summary>
+        public static void CheckProcessingStatus()
+        {
+            string apiKey = GetApiKey();
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                EditorUtility.DisplayDialog("Supermemory", 
+                    "No API key found.", "OK");
+                return;
+            }
+            
+            EditorCoroutineUtility.StartCoroutineOwnerless(CheckProcessingStatusCoroutine(apiKey));
+        }
+        
+        private static IEnumerator CheckProcessingStatusCoroutine(string apiKey)
+        {
+            EditorUtility.DisplayProgressBar("Supermemory", "Checking processing status...", 0.5f);
+            
+            var request = new UnityEngine.Networking.UnityWebRequest($"{ApiBaseUrl}/documents/processing", "GET");
+            request.downloadHandler = new UnityEngine.Networking.DownloadHandlerBuffer();
+            request.timeout = 15;
+            request.SetRequestHeader("Authorization", $"Bearer {apiKey}");
+            
+            var operation = request.SendWebRequest();
+            while (!operation.isDone)
+                yield return null;
+            
+            EditorUtility.ClearProgressBar();
+            
+            if (request.result != UnityEngine.Networking.UnityWebRequest.Result.Success)
+            {
+                EditorUtility.DisplayDialog("Supermemory", 
+                    $"Failed to check status: {request.responseCode} {request.error}", "OK");
+                request.Dispose();
+                yield break;
+            }
+            
+            try
+            {
+                JObject response = JObject.Parse(request.downloadHandler.text);
+                JArray docs = response["documents"] as JArray;
+                int total = docs?.Count ?? 0;
+                
+                if (total == 0)
+                {
+                    EditorUtility.DisplayDialog("Supermemory", 
+                        "All documents have been processed and are searchable.", "OK");
+                }
+                else
+                {
+                    // Count by status
+                    var statusCounts = new Dictionary<string, int>();
+                    foreach (JObject doc in docs)
+                    {
+                        string status = doc["status"]?.ToString() ?? "unknown";
+                        if (!statusCounts.ContainsKey(status))
+                            statusCounts[status] = 0;
+                        statusCounts[status]++;
+                    }
+                    
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"{total} document(s) still processing:\n");
+                    foreach (var kvp in statusCounts)
+                    {
+                        sb.AppendLine($"  {kvp.Key}: {kvp.Value}");
+                    }
+                    
+                    EditorUtility.DisplayDialog("Supermemory Processing Status", sb.ToString(), "OK");
+                }
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog("Supermemory", 
+                    $"Failed to parse status response: {ex.Message}", "OK");
+            }
+            
+            request.Dispose();
         }
     }
 }
