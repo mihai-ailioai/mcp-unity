@@ -37,6 +37,7 @@ namespace McpUnity.Resources
             }
 
             string idOrName = parameters["idOrName"]?.ToObject<string>();
+            bool summary = parameters["summary"]?.ToObject<bool>() ?? false;
             
             if (string.IsNullOrEmpty(idOrName))
             {
@@ -73,15 +74,55 @@ namespace McpUnity.Resources
             }
 
             // Convert the GameObject to a JObject
-            JObject gameObjectData = GameObjectToJObject(gameObject, true);
+            JObject gameObjectData = summary 
+                ? GameObjectToSummaryJObject(gameObject) 
+                : GameObjectToJObject(gameObject, true);
                 
             // Create the response
             return new JObject
             {
                 ["success"] = true,
-                ["message"] = $"Retrieved GameObject data for '{gameObject.name}'",
+                ["message"] = summary
+                    ? $"Retrieved summary for GameObject '{gameObject.name}'"
+                    : $"Retrieved GameObject data for '{gameObject.name}'",
                 ["gameObject"] = gameObjectData,
                 ["instanceId"] = gameObject.GetInstanceID()
+            };
+        }
+
+        /// <summary>
+        /// Convert a GameObject to a summary JObject containing only name, instanceId,
+        /// component type names, and children. Useful for quickly scanning large hierarchies
+        /// without the overhead of full component property serialization.
+        /// </summary>
+        /// <param name="gameObject">The GameObject to convert</param>
+        /// <returns>A lightweight JObject representing the GameObject</returns>
+        public static JObject GameObjectToSummaryJObject(GameObject gameObject)
+        {
+            if (gameObject == null) return null;
+            
+            // Collect component type names
+            Component[] components = gameObject.GetComponents<Component>();
+            JArray componentTypes = new JArray();
+            foreach (Component component in components)
+            {
+                if (component == null) continue;
+                componentTypes.Add(component.GetType().Name);
+            }
+            
+            // Recurse into children
+            JArray childrenArray = new JArray();
+            foreach (Transform child in gameObject.transform)
+            {
+                childrenArray.Add(GameObjectToSummaryJObject(child.gameObject));
+            }
+            
+            return new JObject
+            {
+                ["name"] = gameObject.name,
+                ["instanceId"] = gameObject.GetInstanceID(),
+                ["components"] = componentTypes,
+                ["children"] = childrenArray
             };
         }
 

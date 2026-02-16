@@ -8,12 +8,18 @@ import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 // Constants for the tool
 const toolName = "get_gameobject";
 const toolDescription =
-  "Retrieves detailed information about a specific GameObject by instance ID, name, or hierarchical path (e.g., 'Parent/Child/MyObject'). Returns all component properties including Transform position, rotation, scale, and more.";
+  "Retrieves detailed information about a specific GameObject by instance ID, name, or hierarchical path (e.g., 'Parent/Child/MyObject'). Returns all component properties including Transform position, rotation, scale, and more. Set summary=true to get a lightweight response with only names, instanceIds, and component type names — useful for scanning large hierarchies without full property serialization.";
 const paramsSchema = z.object({
   idOrName: z
     .string()
     .describe(
       "The instance ID (integer), name, or hierarchical path of the GameObject to retrieve. Use hierarchical paths like 'Canvas/Panel/Button' for nested objects."
+    ),
+  summary: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, returns a lightweight response with only names, instanceIds, and component type names (no property details). Useful for scanning large hierarchies."
     ),
 });
 
@@ -63,13 +69,14 @@ async function toolHandler(
   mcpUnity: McpUnity,
   params: z.infer<typeof paramsSchema>
 ): Promise<CallToolResult> {
-  const { idOrName } = params;
+  const { idOrName, summary } = params;
 
   // Send request to Unity
   const response = await mcpUnity.sendRequest({
     method: toolName,
     params: {
       idOrName: idOrName,
+      summary: summary ?? false,
     },
   });
 

@@ -8,7 +8,7 @@ import { resourceName as hierarchyResourceName } from './getScenesHierarchyResou
 
 // Constants for the resource
 const resourceName = 'get_gameobject';
-const resourceUri = 'unity://gameobject/{idOrName}';
+const resourceUri = 'unity://gameobject/{idOrName}?summary={summary}';
 const resourceMimeType = 'application/json';
 
 /**
@@ -36,7 +36,7 @@ export function registerGetGameObjectResource(server: McpServer, mcpUnity: McpUn
     resourceName,
     resourceTemplate,
     {
-      description: 'Retrieve a GameObject by instance ID, name, or hierarchical path (e.g., "Parent/Child/MyObject")',
+      description: 'Retrieve a GameObject by instance ID, name, or hierarchical path (e.g., "Parent/Child/MyObject"). Set summary=true to get a lightweight response with only names, instanceIds, and component type names — useful for scanning large hierarchies without full property serialization.',
       mimeType: resourceMimeType
     },
     async (uri, variables) => {
@@ -62,12 +62,20 @@ export function registerGetGameObjectResource(server: McpServer, mcpUnity: McpUn
 async function resourceHandler(mcpUnity: McpUnity, uri: URL, variables: Variables, logger: Logger): Promise<ReadResourceResult> {
   // Extract and convert the parameter from the template variables
   const idOrName = decodeURIComponent(variables["idOrName"] as string);
+  
+  // Extract summary parameter (defaults to false)
+  let summary = false;
+  if (variables["summary"] !== undefined) {
+    const value = variables["summary"] as string;
+    summary = value === 'true' || value === '1' || value === 'yes';
+  }
       
   // Send request to Unity
   const response = await mcpUnity.sendRequest({
     method: resourceName,
     params: {
-      idOrName: idOrName
+      idOrName: idOrName,
+      summary: summary
     }
   });
   
@@ -80,7 +88,7 @@ async function resourceHandler(mcpUnity: McpUnity, uri: URL, variables: Variable
   
   return {
     contents: [{
-      uri: `unity://gameobject/${idOrName}`,
+      uri: `unity://gameobject/${idOrName}?summary=${summary}`,
       mimeType: resourceMimeType,
       text: JSON.stringify(response, null, 2)
     }]

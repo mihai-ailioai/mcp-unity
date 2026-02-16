@@ -36,6 +36,7 @@ namespace McpUnity.Tools
             }
 
             string idOrName = parameters["idOrName"]?.ToObject<string>();
+            bool summary = parameters["summary"]?.ToObject<bool>() ?? false;
 
             if (string.IsNullOrEmpty(idOrName))
             {
@@ -70,13 +71,17 @@ namespace McpUnity.Tools
             }
 
             // Convert the GameObject to a JObject using the resource's static method
-            JObject gameObjectData = GetGameObjectResource.GameObjectToJObject(gameObject, true);
+            JObject gameObjectData = summary
+                ? GetGameObjectResource.GameObjectToSummaryJObject(gameObject)
+                : GetGameObjectResource.GameObjectToJObject(gameObject, true);
 
             // Create the response
             return new JObject
             {
                 ["success"] = true,
-                ["message"] = $"Retrieved GameObject data for '{gameObject.name}'",
+                ["message"] = summary
+                    ? $"Retrieved summary for GameObject '{gameObject.name}'"
+                    : $"Retrieved GameObject data for '{gameObject.name}'",
                 ["gameObject"] = gameObjectData,
                 ["instanceId"] = gameObject.GetInstanceID()
             };
