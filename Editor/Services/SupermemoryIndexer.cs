@@ -724,41 +724,57 @@ namespace McpUnity.Services
             
             EditorUtility.ClearProgressBar();
             
-            // Compare
-            int unchanged = 0;
-            int changed = 0;
-            int newDocs = 0;
-            int noHashRemote = 0;
+            // Compare — track per type
+            var types = new[] { "script", "prefab", "scene" };
+            var localCount = new Dictionary<string, int>();
+            var unchangedCount = new Dictionary<string, int>();
+            var changedCount = new Dictionary<string, int>();
+            var newCount = new Dictionary<string, int>();
+            
+            foreach (string t in types)
+            {
+                localCount[t] = 0;
+                unchangedCount[t] = 0;
+                changedCount[t] = 0;
+                newCount[t] = 0;
+            }
             
             foreach (var doc in allDocs)
             {
+                localCount[doc.Type]++;
                 if (existingHashes.TryGetValue(doc.CustomId, out string remoteHash))
                 {
                     if (remoteHash == doc.ContentHash)
-                        unchanged++;
+                        unchangedCount[doc.Type]++;
                     else
-                        changed++;
+                        changedCount[doc.Type]++;
                 }
                 else
                 {
-                    newDocs++;
+                    newCount[doc.Type]++;
                 }
             }
             
-            // Check if remote has docs with no contentHash metadata
-            noHashRemote = existingHashes.Values.Count(v => string.IsNullOrEmpty(v));
+            int totalUnchanged = unchangedCount.Values.Sum();
+            int totalChanged = changedCount.Values.Sum();
+            int totalNew = newCount.Values.Sum();
             
-            string summary = $"Local: {allDocs.Count} assets, Remote: {existingHashes.Count} documents\n\n" +
-                             $"Unchanged: {unchanged}\n" +
-                             $"Changed: {changed}\n" +
-                             $"New (not in remote): {newDocs}";
+            var sb = new StringBuilder();
+            sb.AppendLine($"Local: {allDocs.Count} assets, Remote: {existingHashes.Count} documents\n");
             
-            if (changed == 0 && newDocs == 0)
-                summary += "\n\nEverything is up to date.";
+            // Per-type breakdown
+            sb.AppendLine($"{"",- 12}{"Local",7}{"Unch.",7}{"Changed",9}{"New",6}");
+            sb.AppendLine($"{"Scripts",-12}{localCount["script"],7}{unchangedCount["script"],7}{changedCount["script"],9}{newCount["script"],6}");
+            sb.AppendLine($"{"Prefabs",-12}{localCount["prefab"],7}{unchangedCount["prefab"],7}{changedCount["prefab"],9}{newCount["prefab"],6}");
+            if (includeScenes)
+                sb.AppendLine($"{"Scenes",-12}{localCount["scene"],7}{unchangedCount["scene"],7}{changedCount["scene"],9}{newCount["scene"],6}");
+            
+            if (totalChanged == 0 && totalNew == 0)
+                sb.Append("\nEverything is up to date.");
             else
-                summary += $"\n\nRe-indexing would push {changed + newDocs} document(s).";
+                sb.Append($"\nRe-indexing would push {totalChanged + totalNew} document(s).");
             
-            EditorUtility.DisplayDialog("Supermemory — Change Check", summary, "OK");
+            EditorUtility.DisplayDialog("Supermemory — Change Check", sb.ToString(), "OK");
         }
         
         /// <summary>
