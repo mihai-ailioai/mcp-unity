@@ -310,18 +310,20 @@ namespace McpUnity.Unity
         private void DrawSupermemoryTab()
         {
             _supermemoryTabScrollPosition = EditorGUILayout.BeginScrollView(_supermemoryTabScrollPosition);
-            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.BeginVertical();
             
-            EditorGUILayout.LabelField("Supermemory Integration", _headerStyle);
             EditorGUILayout.HelpBox(
                 "Index your project's scripts and prefabs into supermemory for semantic search by AI agents. " +
                 "Retrieval is handled by supermemory's own MCP server (add it separately to your AI tool).",
-                MessageType.None);
+                MessageType.Info);
             EditorGUILayout.Space();
             
             McpUnitySettings settings = McpUnitySettings.Instance;
             
-            // API Key status + input
+            // ── Authentication ──
+            EditorGUILayout.LabelField("Authentication", _subHeaderStyle);
+            EditorGUILayout.BeginVertical(_boxStyle);
+            
             bool hasEnvKey = SupermemoryIndexer.IsApiKeyFromEnvironment();
             
             EditorGUILayout.BeginHorizontal();
@@ -335,7 +337,7 @@ namespace McpUnity.Unity
                 
                 GUIStyle envStyle = new GUIStyle(EditorStyles.miniLabel);
                 envStyle.normal.textColor = Color.green;
-                EditorGUILayout.LabelField("Using env var", envStyle, GUILayout.Width(80));
+                EditorGUILayout.LabelField("(env var)", envStyle, GUILayout.Width(60));
             }
             else
             {
@@ -357,15 +359,24 @@ namespace McpUnity.Unity
             }
             EditorGUILayout.EndHorizontal();
             
-            if (!hasEnvKey)
+            if (!hasEnvKey && string.IsNullOrEmpty(_supermemoryApiKeyInput))
             {
                 EditorGUILayout.HelpBox(
-                    "Set SUPERMEMORY_API_KEY environment variable for persistent configuration. " +
-                    "The key entered above is only kept in memory for this editor session.",
-                    MessageType.Info);
+                    "Enter your API key above, or set the SUPERMEMORY_API_KEY environment variable for persistent configuration.",
+                    MessageType.Warning);
+            }
+            else if (!hasEnvKey)
+            {
+                EditorGUILayout.LabelField("Session only — lost on editor restart. Use env var for persistence.", 
+                    EditorStyles.miniLabel);
             }
             
+            EditorGUILayout.EndVertical();
             EditorGUILayout.Space();
+            
+            // ── Configuration ──
+            EditorGUILayout.LabelField("Configuration", _subHeaderStyle);
+            EditorGUILayout.BeginVertical(_boxStyle);
             
             // Container tag
             string newContainerTag = EditorGUILayout.TextField(
@@ -377,50 +388,8 @@ namespace McpUnity.Unity
                 settings.SupermemoryContainerTag = newContainerTag;
                 settings.SaveSettings();
             }
-            
-            EditorGUILayout.LabelField($"Effective tag: {SupermemoryIndexer.GetContainerTag()}", 
+            EditorGUILayout.LabelField($"Effective: {SupermemoryIndexer.GetContainerTag()}", 
                 EditorStyles.miniLabel);
-            
-            EditorGUILayout.Space();
-            
-            // Index folders
-            EditorGUILayout.LabelField(new GUIContent("Index Folders", 
-                "Subfolders under Assets/ to index. Leave empty to index all of Assets/."), EditorStyles.boldLabel);
-            
-            if (settings.SupermemoryIndexFolders.Count == 0)
-            {
-                EditorGUILayout.LabelField("No folders specified — will index all of Assets/", EditorStyles.miniLabel);
-            }
-            else
-            {
-                int removeIndex = -1;
-                for (int i = 0; i < settings.SupermemoryIndexFolders.Count; i++)
-                {
-                    EditorGUILayout.BeginHorizontal();
-                    string newFolder = EditorGUILayout.TextField(settings.SupermemoryIndexFolders[i]);
-                    if (newFolder != settings.SupermemoryIndexFolders[i])
-                    {
-                        settings.SupermemoryIndexFolders[i] = newFolder;
-                        settings.SaveSettings();
-                    }
-                    if (GUILayout.Button("X", GUILayout.Width(25)))
-                    {
-                        removeIndex = i;
-                    }
-                    EditorGUILayout.EndHorizontal();
-                }
-                if (removeIndex >= 0)
-                {
-                    settings.SupermemoryIndexFolders.RemoveAt(removeIndex);
-                    settings.SaveSettings();
-                }
-            }
-            
-            if (GUILayout.Button("+ Add Folder", GUILayout.Width(120)))
-            {
-                settings.SupermemoryIndexFolders.Add(string.Empty);
-                settings.SaveSettings();
-            }
             
             EditorGUILayout.Space();
             
@@ -435,9 +404,59 @@ namespace McpUnity.Unity
                 settings.SaveSettings();
             }
             
+            EditorGUILayout.EndVertical();
             EditorGUILayout.Space();
             
-            // Index button
+            // ── Index Folders ──
+            EditorGUILayout.LabelField("Index Folders", _subHeaderStyle);
+            EditorGUILayout.BeginVertical(_boxStyle);
+            
+            if (settings.SupermemoryIndexFolders.Count == 0)
+            {
+                EditorGUILayout.LabelField("No folders specified — will index all of Assets/", EditorStyles.miniLabel);
+            }
+            else
+            {
+                int removeIndex = -1;
+                for (int i = 0; i < settings.SupermemoryIndexFolders.Count; i++)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("Assets/", GUILayout.Width(50));
+                    string newFolder = EditorGUILayout.TextField(settings.SupermemoryIndexFolders[i]);
+                    if (newFolder != settings.SupermemoryIndexFolders[i])
+                    {
+                        settings.SupermemoryIndexFolders[i] = newFolder;
+                        settings.SaveSettings();
+                    }
+                    if (GUILayout.Button("-", GUILayout.Width(25)))
+                    {
+                        removeIndex = i;
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
+                if (removeIndex >= 0)
+                {
+                    settings.SupermemoryIndexFolders.RemoveAt(removeIndex);
+                    settings.SaveSettings();
+                }
+            }
+            
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("+ Add Folder", GUILayout.Width(120)))
+            {
+                settings.SupermemoryIndexFolders.Add(string.Empty);
+                settings.SaveSettings();
+            }
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space();
+            
+            // ── Actions ──
+            EditorGUILayout.LabelField("Actions", _subHeaderStyle);
+            EditorGUILayout.BeginVertical(_boxStyle);
+            
             GUI.enabled = SupermemoryIndexer.HasApiKey;
             string buttonLabel = string.IsNullOrEmpty(settings.SupermemoryLastIndexedTimestamp) 
                 ? "Index Project" 
@@ -448,25 +467,31 @@ namespace McpUnity.Unity
             }
             GUI.enabled = true;
             
+            EditorGUILayout.Space();
+            
+            EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Check for Changes"))
             {
                 SupermemoryIndexer.CheckForChanges(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolders);
             }
-            
             if (GUILayout.Button("Check Processing Status"))
             {
                 SupermemoryIndexer.CheckProcessingStatus();
             }
+            EditorGUILayout.EndHorizontal();
             
             // Last indexed timestamp
             if (!string.IsNullOrEmpty(settings.SupermemoryLastIndexedTimestamp))
             {
+                EditorGUILayout.Space();
                 if (DateTime.TryParse(settings.SupermemoryLastIndexedTimestamp, out DateTime lastIndexed))
                 {
                     EditorGUILayout.LabelField($"Last indexed: {lastIndexed.ToLocalTime():g}", 
-                        EditorStyles.miniLabel);
+                        EditorStyles.centeredGreyMiniLabel);
                 }
             }
+            
+            EditorGUILayout.EndVertical();
             
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndScrollView();
