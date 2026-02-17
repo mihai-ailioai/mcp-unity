@@ -83,6 +83,50 @@ namespace McpUnity.Utils
         }
 
         /// <summary>
+        /// Generates the MCP configuration JSON for Junie (JetBrains).
+        /// Junie uses standard mcpServers format with additional "type": "command" and "enabled": true fields.
+        /// </summary>
+        public static string GenerateJunieConfigJson(bool useTabsIndentation)
+        {
+            string indexJsPath = Path.Combine(GetServerPath(), "build", "index.js").Replace("\\", "/");
+
+            var config = new JObject
+            {
+                ["mcpServers"] = new JObject
+                {
+                    ["mcp-unity"] = new JObject
+                    {
+                        ["type"] = "command",
+                        ["command"] = "node",
+                        ["args"] = new JArray(indexJsPath),
+                        ["enabled"] = true
+                    }
+                }
+            };
+
+            var stringWriter = new StringWriter();
+            using (var jsonWriter = new JsonTextWriter(stringWriter))
+            {
+                jsonWriter.Formatting = Formatting.Indented;
+
+                if (useTabsIndentation)
+                {
+                    jsonWriter.IndentChar = '\t';
+                    jsonWriter.Indentation = 1;
+                }
+                else
+                {
+                    jsonWriter.IndentChar = ' ';
+                    jsonWriter.Indentation = 2;
+                }
+
+                config.WriteTo(jsonWriter);
+            }
+
+            return stringWriter.ToString();
+        }
+
+        /// <summary>
         /// Generates the MCP configuration JSON for OpenCode.
         /// OpenCode uses a different schema: { "$schema": "...", "mcp": { "mcp-unity": { "type": "local", "command": ["node", "path"] } } }
         /// </summary>
@@ -292,6 +336,17 @@ namespace McpUnity.Utils
         {
             string configFilePath = GetCodexCliConfigPath();
             return AddToTomlConfigFile(configFilePath, "Codex CLI");
+        }
+
+        /// <summary>
+        /// Adds the MCP configuration to the Junie (JetBrains) config file.
+        /// Junie uses standard mcpServers format with "type": "command" and "enabled" fields.
+        /// Config is project-scoped at .junie/mcp/mcp.json.
+        /// </summary>
+        public static bool AddToJunieConfig(bool useTabsIndentation)
+        {
+            string configFilePath = GetJunieConfigPath();
+            return AddToJunieConfigFile(configFilePath, useTabsIndentation, "Junie");
         }
 
         /// <summary>
@@ -543,6 +598,17 @@ namespace McpUnity.Utils
             }
             
             return Path.Combine(homeDir, ".codex", "config.toml");
+        }
+
+        /// <summary>
+        /// Gets the path to the Junie (JetBrains) config file (project-root .junie/mcp/mcp.json)
+        /// </summary>
+        /// <returns>The path to the Junie MCP config file</returns>
+        private static string GetJunieConfigPath()
+        {
+            // Junie uses .junie/mcp/mcp.json in the Unity project root
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            return Path.Combine(projectRoot, ".junie", "mcp", "mcp.json");
         }
 
         /// <summary>
@@ -809,6 +875,49 @@ namespace McpUnity.Utils
                 // Write the updated config back to the file
                 File.WriteAllText(configFilePath, existingConfig.ToString(Formatting.Indented));
                 return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Adds MCP configuration to a Junie config file.
+        /// Junie uses standard mcpServers format but with "type" and "enabled" fields.
+        /// Creates the .junie/mcp/ directory structure if it doesn't exist.
+        /// </summary>
+        private static bool AddToJunieConfigFile(string configFilePath, bool useTabsIndentation, string productName)
+        {
+            if (string.IsNullOrEmpty(configFilePath))
+            {
+                Debug.LogError($"{productName} config file path could not be determined.");
+                return false;
+            }
+
+            try
+            {
+                string junieJson = GenerateJunieConfigJson(useTabsIndentation);
+                JObject mcpConfig = JObject.Parse(junieJson);
+
+                if (File.Exists(configFilePath))
+                {
+                    return TryMergeMcpServers(configFilePath, mcpConfig, productName);
+                }
+                else
+                {
+                    // Create directory structure if it doesn't exist
+                    string directoryPath = Path.GetDirectoryName(configFilePath);
+                    if (!Directory.Exists(directoryPath))
+                    {
+                        Directory.CreateDirectory(directoryPath);
+                    }
+
+                    File.WriteAllText(configFilePath, junieJson);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to add MCP configuration to {productName}: {ex}");
             }
 
             return false;

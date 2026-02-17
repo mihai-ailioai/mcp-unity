@@ -289,6 +289,10 @@ namespace McpUnity.Unity
 
             EditorGUILayout.Space();
 
+            ShowConfigButton("Junie", McpUtils.AddToJunieConfig);
+
+            EditorGUILayout.Space();
+
             ShowConfigButton("Google Antigravity", McpUtils.AddToAntigravityConfig);
 
             EditorGUILayout.Separator();
