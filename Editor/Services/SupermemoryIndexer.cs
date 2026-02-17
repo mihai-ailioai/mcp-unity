@@ -127,7 +127,7 @@ namespace McpUnity.Services
         }
         
         /// <summary>
-        /// Resolves the search folder for AssetDatabase.FindAssets.
+        /// Resolves a single folder string to a search path for AssetDatabase.FindAssets.
         /// Empty/null → "Assets". Otherwise "Assets/{folder}" with trailing slash trimmed.
         /// </summary>
         private static string ResolveSearchFolder(string folder)
@@ -143,15 +143,54 @@ namespace McpUnity.Services
         }
         
         /// <summary>
-        /// Collect all script documents (MonoScript assets under the search folder).
+        /// Resolves a list of folder strings to search paths. Empty/null list → ["Assets"].
+        /// Validates each folder exists; returns only valid ones.
         /// </summary>
-        public static List<IndexDocument> CollectScripts(string searchFolder)
+        private static List<string> ResolveSearchFolders(List<string> folders, out List<string> invalidFolders)
+        {
+            invalidFolders = new List<string>();
+            var result = new List<string>();
+            
+            if (folders == null || folders.Count == 0)
+            {
+                result.Add("Assets");
+                return result;
+            }
+            
+            foreach (string folder in folders)
+            {
+                string resolved = ResolveSearchFolder(folder);
+                if (AssetDatabase.IsValidFolder(resolved))
+                {
+                    if (!result.Contains(resolved))
+                        result.Add(resolved);
+                }
+                else
+                {
+                    invalidFolders.Add(resolved);
+                }
+            }
+            
+            // If all folders were invalid, fall back to Assets
+            if (result.Count == 0 && invalidFolders.Count > 0)
+                return result; // return empty — caller should handle
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// Collect all script documents from the given search folders (deduplicated by GUID).
+        /// </summary>
+        public static List<IndexDocument> CollectScripts(List<string> searchFolders)
         {
             var docs = new List<IndexDocument>();
-            string[] guids = AssetDatabase.FindAssets("t:MonoScript", new[] { searchFolder });
+            var seen = new HashSet<string>();
+            string[] guids = AssetDatabase.FindAssets("t:MonoScript", searchFolders.ToArray());
             
             foreach (string guid in guids)
             {
+                if (!seen.Add(guid)) continue; // deduplicate across folders
+                
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 if (!assetPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -184,15 +223,17 @@ namespace McpUnity.Services
         }
         
         /// <summary>
-        /// Collect all prefab documents (under the search folder).
+        /// Collect all prefab documents from the given search folders (deduplicated by GUID).
         /// </summary>
-        public static List<IndexDocument> CollectPrefabs(string searchFolder)
+        public static List<IndexDocument> CollectPrefabs(List<string> searchFolders)
         {
             var docs = new List<IndexDocument>();
-            string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { searchFolder });
+            var seen = new HashSet<string>();
+            string[] guids = AssetDatabase.FindAssets("t:Prefab", searchFolders.ToArray());
             
             foreach (string guid in guids)
             {
+                if (!seen.Add(guid)) continue;
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 
                 try
@@ -228,16 +269,18 @@ namespace McpUnity.Services
         }
         
         /// <summary>
-        /// Collect all scene documents (under the search folder). Opens each scene additively.
-        /// This can be slow for large scenes.
+        /// Collect all scene documents from the given search folders (deduplicated by GUID).
+        /// Opens each scene additively. This can be slow for large scenes.
         /// </summary>
-        public static List<IndexDocument> CollectScenes(string searchFolder)
+        public static List<IndexDocument> CollectScenes(List<string> searchFolders)
         {
             var docs = new List<IndexDocument>();
-            string[] guids = AssetDatabase.FindAssets("t:SceneAsset", new[] { searchFolder });
+            var seen = new HashSet<string>();
+            string[] guids = AssetDatabase.FindAssets("t:SceneAsset", searchFolders.ToArray());
             
             foreach (string guid in guids)
             {
+                if (!seen.Add(guid)) continue;
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 
                 var scene = default(UnityEngine.SceneManagement.Scene);
@@ -304,8 +347,8 @@ namespace McpUnity.Services
         /// Runs as an editor coroutine to keep the editor responsive.
         /// </summary>
         /// <param name="includeScenes">Whether to include scene files (can be slow).</param>
-        /// <param name="indexFolder">Subfolder under Assets/ to index. Empty means all of Assets/.</param>
-        public static void IndexProject(bool includeScenes, string indexFolder)
+        /// <param name="indexFolders">Subfolders under Assets/ to index. Empty list means all of Assets/.</param>
+        public static void IndexProject(bool includeScenes, List<string> indexFolders)
         {
             string apiKey = GetApiKey();
             if (string.IsNullOrEmpty(apiKey))
@@ -316,21 +359,25 @@ namespace McpUnity.Services
                 return;
             }
             
-            string searchFolder = ResolveSearchFolder(indexFolder);
+            var searchFolders = ResolveSearchFolders(indexFolders, out var invalidFolders);
             
-            // Validate the folder exists
-            if (!AssetDatabase.IsValidFolder(searchFolder))
+            if (searchFolders.Count == 0)
             {
                 EditorUtility.DisplayDialog("Supermemory", 
-                    $"Folder '{searchFolder}' does not exist in the project.", 
+                    $"No valid folders found. Invalid: {string.Join(", ", invalidFolders)}", 
                     "OK");
                 return;
             }
             
-            EditorCoroutineUtility.StartCoroutineOwnerless(IndexProjectCoroutine(includeScenes, apiKey, searchFolder));
+            if (invalidFolders.Count > 0)
+            {
+                McpLogger.LogWarning($"[Supermemory] Skipping invalid folders: {string.Join(", ", invalidFolders)}");
+            }
+            
+            EditorCoroutineUtility.StartCoroutineOwnerless(IndexProjectCoroutine(includeScenes, apiKey, searchFolders));
         }
         
-        private static IEnumerator IndexProjectCoroutine(bool includeScenes, string apiKey, string searchFolder)
+        private static IEnumerator IndexProjectCoroutine(bool includeScenes, string apiKey, List<string> searchFolders)
         {
             string containerTag = GetContainerTag();
             int totalSuccess = 0;
@@ -345,19 +392,21 @@ namespace McpUnity.Services
             // Phase 1: Collect (synchronous — no yield, so progress bar won't repaint between calls)
             EditorUtility.DisplayProgressBar("Supermemory Indexing", "Collecting assets...", 0f);
             
-            scripts = CollectScripts(searchFolder);
-            allDocs.AddRange(scripts);
-            McpLogger.LogInfo($"[Supermemory] Collected {scripts.Count} scripts from {searchFolder}");
+            string folderDesc = string.Join(", ", searchFolders);
             
-            prefabs = CollectPrefabs(searchFolder);
+            scripts = CollectScripts(searchFolders);
+            allDocs.AddRange(scripts);
+            McpLogger.LogInfo($"[Supermemory] Collected {scripts.Count} scripts from [{folderDesc}]");
+            
+            prefabs = CollectPrefabs(searchFolders);
             allDocs.AddRange(prefabs);
-            McpLogger.LogInfo($"[Supermemory] Collected {prefabs.Count} prefabs from {searchFolder}");
+            McpLogger.LogInfo($"[Supermemory] Collected {prefabs.Count} prefabs from [{folderDesc}]");
             
             if (includeScenes)
             {
-                var scenes = CollectScenes(searchFolder);
+                var scenes = CollectScenes(searchFolders);
                 allDocs.AddRange(scenes);
-                McpLogger.LogInfo($"[Supermemory] Collected {scenes.Count} scenes from {searchFolder}");
+                McpLogger.LogInfo($"[Supermemory] Collected {scenes.Count} scenes from [{folderDesc}]");
             }
             
             // Yield once so the progress bar actually renders before pushing
@@ -570,7 +619,7 @@ namespace McpUnity.Services
         /// Check for changes without pushing. Collects local assets, fetches existing hashes,
         /// and reports how many are new, changed, or unchanged.
         /// </summary>
-        public static void CheckForChanges(bool includeScenes, string indexFolder)
+        public static void CheckForChanges(bool includeScenes, List<string> indexFolders)
         {
             string apiKey = GetApiKey();
             if (string.IsNullOrEmpty(apiKey))
@@ -579,28 +628,28 @@ namespace McpUnity.Services
                 return;
             }
             
-            string searchFolder = ResolveSearchFolder(indexFolder);
-            if (!AssetDatabase.IsValidFolder(searchFolder))
+            var searchFolders = ResolveSearchFolders(indexFolders, out var invalidFolders);
+            if (searchFolders.Count == 0)
             {
                 EditorUtility.DisplayDialog("Supermemory", 
-                    $"Folder '{searchFolder}' does not exist in the project.", "OK");
+                    $"No valid folders found. Invalid: {string.Join(", ", invalidFolders)}", "OK");
                 return;
             }
             
-            EditorCoroutineUtility.StartCoroutineOwnerless(CheckForChangesCoroutine(includeScenes, apiKey, searchFolder));
+            EditorCoroutineUtility.StartCoroutineOwnerless(CheckForChangesCoroutine(includeScenes, apiKey, searchFolders));
         }
         
-        private static IEnumerator CheckForChangesCoroutine(bool includeScenes, string apiKey, string searchFolder)
+        private static IEnumerator CheckForChangesCoroutine(bool includeScenes, string apiKey, List<string> searchFolders)
         {
             string containerTag = GetContainerTag();
             
             EditorUtility.DisplayProgressBar("Supermemory", "Collecting local assets...", 0f);
             
             var allDocs = new List<IndexDocument>();
-            allDocs.AddRange(CollectScripts(searchFolder));
-            allDocs.AddRange(CollectPrefabs(searchFolder));
+            allDocs.AddRange(CollectScripts(searchFolders));
+            allDocs.AddRange(CollectPrefabs(searchFolders));
             if (includeScenes)
-                allDocs.AddRange(CollectScenes(searchFolder));
+                allDocs.AddRange(CollectScenes(searchFolders));
             
             yield return null;
             

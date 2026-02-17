@@ -19,7 +19,8 @@ namespace McpUnity.Unity
         private GUIStyle _connectedClientBoxStyle; // Style for individual connected clients
         private GUIStyle _connectedClientLabelStyle; // Style for labels in connected client boxes
         private int _selectedTab = 0;
-        private readonly string[] _tabNames = { "Server", "Help" };
+        private readonly string[] _tabNames = { "Server", "Supermemory", "Help" };
+        private Vector2 _supermemoryTabScrollPosition = Vector2.zero;
         private bool _isInitialized = false;
         private string _mcpConfigJson = "";
         private bool _tabsIndentationJson = false;
@@ -54,7 +55,10 @@ namespace McpUnity.Unity
                 case 0: // Server tab
                     DrawServerTab();
                     break;
-                case 1: // Help tab
+                case 1: // Supermemory tab
+                    DrawSupermemoryTab();
+                    break;
+                case 2: // Help tab
                     DrawHelpTab();
                     break;
             }
@@ -298,17 +302,22 @@ namespace McpUnity.Unity
                 McpUnityServer.Instance.InstallServer();
                 McpLogger.LogInfo("MCP Unity Server installed successfully.");
             }
-
-            DrawSupermemorySection();
             
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndScrollView();
         }
 
-        private void DrawSupermemorySection()
+        private void DrawSupermemoryTab()
         {
+            _supermemoryTabScrollPosition = EditorGUILayout.BeginScrollView(_supermemoryTabScrollPosition);
+            EditorGUILayout.BeginVertical("box");
+            
+            EditorGUILayout.LabelField("Supermemory Integration", _headerStyle);
+            EditorGUILayout.HelpBox(
+                "Index your project's scripts and prefabs into supermemory for semantic search by AI agents. " +
+                "Retrieval is handled by supermemory's own MCP server (add it separately to your AI tool).",
+                MessageType.None);
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Supermemory Integration", EditorStyles.boldLabel);
             
             McpUnitySettings settings = McpUnitySettings.Instance;
             
@@ -374,21 +383,43 @@ namespace McpUnity.Unity
             
             EditorGUILayout.Space();
             
-            // Index folder
-            string newIndexFolder = EditorGUILayout.TextField(
-                new GUIContent("Index Folder", 
-                    "Subfolder under Assets/ to index (e.g. 'Game/Test'). Leave empty to index all of Assets/."),
-                settings.SupermemoryIndexFolder);
-            if (newIndexFolder != settings.SupermemoryIndexFolder)
+            // Index folders
+            EditorGUILayout.LabelField(new GUIContent("Index Folders", 
+                "Subfolders under Assets/ to index. Leave empty to index all of Assets/."), EditorStyles.boldLabel);
+            
+            if (settings.SupermemoryIndexFolders.Count == 0)
             {
-                settings.SupermemoryIndexFolder = newIndexFolder;
-                settings.SaveSettings();
+                EditorGUILayout.LabelField("No folders specified — will index all of Assets/", EditorStyles.miniLabel);
+            }
+            else
+            {
+                int removeIndex = -1;
+                for (int i = 0; i < settings.SupermemoryIndexFolders.Count; i++)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    string newFolder = EditorGUILayout.TextField(settings.SupermemoryIndexFolders[i]);
+                    if (newFolder != settings.SupermemoryIndexFolders[i])
+                    {
+                        settings.SupermemoryIndexFolders[i] = newFolder;
+                        settings.SaveSettings();
+                    }
+                    if (GUILayout.Button("X", GUILayout.Width(25)))
+                    {
+                        removeIndex = i;
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
+                if (removeIndex >= 0)
+                {
+                    settings.SupermemoryIndexFolders.RemoveAt(removeIndex);
+                    settings.SaveSettings();
+                }
             }
             
-            if (!string.IsNullOrWhiteSpace(settings.SupermemoryIndexFolder))
+            if (GUILayout.Button("+ Add Folder", GUILayout.Width(120)))
             {
-                EditorGUILayout.LabelField($"Will index: Assets/{settings.SupermemoryIndexFolder.Trim().TrimStart('/').TrimEnd('/')}", 
-                    EditorStyles.miniLabel);
+                settings.SupermemoryIndexFolders.Add(string.Empty);
+                settings.SaveSettings();
             }
             
             EditorGUILayout.Space();
@@ -413,13 +444,13 @@ namespace McpUnity.Unity
                 : "Re-index Project";
             if (GUILayout.Button(buttonLabel, GUILayout.Height(30)))
             {
-                SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolder);
+                SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolders);
             }
             GUI.enabled = true;
             
             if (GUILayout.Button("Check for Changes"))
             {
-                SupermemoryIndexer.CheckForChanges(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolder);
+                SupermemoryIndexer.CheckForChanges(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolders);
             }
             
             if (GUILayout.Button("Check Processing Status"))
@@ -436,6 +467,9 @@ namespace McpUnity.Unity
                         EditorStyles.miniLabel);
                 }
             }
+            
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.EndScrollView();
         }
         
         private void DrawHelpTab()
