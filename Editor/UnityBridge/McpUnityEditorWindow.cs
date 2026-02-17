@@ -421,13 +421,35 @@ namespace McpUnity.Unity
                 for (int i = 0; i < settings.SupermemoryIndexFolders.Count; i++)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField("Assets/", GUILayout.Width(50));
-                    string newFolder = EditorGUILayout.TextField(settings.SupermemoryIndexFolders[i]);
-                    if (newFolder != settings.SupermemoryIndexFolders[i])
+                    
+                    // Load the current folder as a DefaultAsset for the ObjectField
+                    string currentPath = string.IsNullOrEmpty(settings.SupermemoryIndexFolders[i]) 
+                        ? "" : $"Assets/{settings.SupermemoryIndexFolders[i]}";
+                    var currentFolder = string.IsNullOrEmpty(currentPath) 
+                        ? null : AssetDatabase.LoadAssetAtPath<DefaultAsset>(currentPath);
+                    
+                    // Drag-and-drop folder field
+                    var droppedFolder = EditorGUILayout.ObjectField(
+                        currentFolder, typeof(DefaultAsset), false) as DefaultAsset;
+                    
+                    if (droppedFolder != currentFolder)
                     {
-                        settings.SupermemoryIndexFolders[i] = newFolder;
-                        settings.SaveSettings();
+                        if (droppedFolder != null)
+                        {
+                            string droppedPath = AssetDatabase.GetAssetPath(droppedFolder);
+                            if (AssetDatabase.IsValidFolder(droppedPath) && droppedPath.StartsWith("Assets/"))
+                            {
+                                settings.SupermemoryIndexFolders[i] = droppedPath.Substring("Assets/".Length);
+                                settings.SaveSettings();
+                            }
+                        }
+                        else
+                        {
+                            settings.SupermemoryIndexFolders[i] = string.Empty;
+                            settings.SaveSettings();
+                        }
                     }
+                    
                     if (GUILayout.Button("-", GUILayout.Width(25)))
                     {
                         removeIndex = i;
