@@ -6,13 +6,16 @@ import { Logger } from '../utils/logger.js';
 
 // Constants for the tool
 const toolName = 'create_prefab';
-const toolDescription = 'Creates a prefab with optional MonoBehaviour script and serialized field values';
+const toolDescription = "Creates a prefab asset with an optional MonoBehaviour component and serialized field values. " +
+  "Use 'savePath' to specify the full asset path (e.g., 'Assets/Prefabs/MyPrefab.prefab'). " +
+  "If omitted, defaults to 'Assets/{prefabName}.prefab'. Returns the full asset path and GUID.";
 
 // Parameter schema for the tool
 const paramsSchema = z.object({
-  componentName: z.string().optional().describe('The name of the MonoBehaviour Component to add to the prefab (optional)'),
-  prefabName: z.string().describe('The name of the prefab to create'),
-  fieldValues: z.record(z.any()).optional().describe('Optional JSON object of serialized field values to apply to the prefab')
+  prefabName: z.string().describe('The name of the prefab to create (used as the GameObject name)'),
+  savePath: z.string().optional().describe("Full asset path to save the prefab (e.g., 'Assets/Prefabs/MyPrefab.prefab'). Must start with 'Assets/'. Defaults to 'Assets/{prefabName}.prefab' if omitted."),
+  componentName: z.string().optional().describe('The name of the MonoBehaviour component to add (short name or fully qualified)'),
+  fieldValues: z.record(z.any()).optional().describe('Optional JSON object of serialized field values to apply to the component')
 });
 
 /**
@@ -73,12 +76,8 @@ async function toolHandler(mcpUnity: McpUnity, params: any) {
   
   return {
     content: [{
-      type: response.type,
-      text: response.message || `Successfully created prefab`
-    }],
-    // Include the prefab path in the result for programmatic access
-    data: {
-      prefabPath: response.prefabPath
-    }
+      type: 'text' as const,
+      text: JSON.stringify(response, null, 2)
+    }]
   };
 }
