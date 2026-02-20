@@ -41,6 +41,7 @@ import { registerUpdateImportSettingsTool } from './tools/updateImportSettingsTo
 import { registerGetPrefabInfoTool } from './tools/getPrefabInfoTool.js';
 import { registerModifyPrefabTool } from './tools/modifyPrefabTool.js';
 import { registerBatchExecuteTool } from './tools/batchExecuteTool.js';
+import { registerSetupAnimationClipTool } from './tools/setupAnimationClipTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
 import { registerGetHierarchyResource } from './resources/getScenesHierarchyResource.js';
@@ -117,6 +118,7 @@ registerCopyAssetTool(server, mcpUnity, toolLogger);
 registerDeleteAssetTool(server, mcpUnity, toolLogger);
 registerGetImportSettingsTool(server, mcpUnity, toolLogger);
 registerUpdateImportSettingsTool(server, mcpUnity, toolLogger);
+registerSetupAnimationClipTool(server, mcpUnity, toolLogger);
 
 // Register Prefab Tools
 registerGetPrefabInfoTool(server, mcpUnity, toolLogger);

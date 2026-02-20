@@ -463,6 +463,10 @@ namespace McpUnity.Unity
             UpdateImportSettingsTool updateImportSettingsTool = new UpdateImportSettingsTool();
             _tools.Add(updateImportSettingsTool.Name, updateImportSettingsTool);
 
+            // Register SetupAnimationClipTool
+            SetupAnimationClipTool setupAnimationClipTool = new SetupAnimationClipTool();
+            _tools.Add(setupAnimationClipTool.Name, setupAnimationClipTool);
+
             // Register Prefab Tools
             GetPrefabInfoTool getPrefabInfoTool = new GetPrefabInfoTool();
             _tools.Add(getPrefabInfoTool.Name, getPrefabInfoTool);
