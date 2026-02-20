@@ -52,10 +52,12 @@ namespace McpUnity.Tools
 
                 Undo.RecordObject(controller, $"Setup Animator Controller {controller.name}");
 
-                int removedParameters = RemoveParameters(controller, parameters["removeParameters"] as JArray);
-                int removedLayers = RemoveLayers(controller, parameters["removeLayers"] as JArray);
+                // Removal order: transitions and states first (they reference layers by index),
+                // then layers (which shift indices), then parameters last
                 int removedTransitions = RemoveTransitions(controller, parameters["removeTransitions"] as JArray);
                 int removedStates = RemoveStates(controller, parameters["removeStates"] as JArray);
+                int removedLayers = RemoveLayers(controller, parameters["removeLayers"] as JArray);
+                int removedParameters = RemoveParameters(controller, parameters["removeParameters"] as JArray);
 
                 int upsertedParameters = UpsertParameters(controller, parameters["parameters"] as JArray);
                 int upsertedLayers = UpsertLayers(controller, parameters["layers"] as JArray);
