@@ -380,10 +380,10 @@ namespace McpUnity.Tools
                 int index = FindLayerIndex(controller, layerName);
                 if (index >= 0)
                 {
-                    AnimatorControllerLayer layer = controller.layers[index];
-                    layer.defaultWeight = weight;
-                    layer.blendingMode = blendingMode;
-                    controller.SetLayer(index, layer);
+                    var layers = controller.layers;
+                    layers[index].defaultWeight = weight;
+                    layers[index].blendingMode = blendingMode;
+                    controller.layers = layers;
                     processedCount++;
                     continue;
                 }
