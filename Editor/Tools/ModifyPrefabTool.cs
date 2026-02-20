@@ -56,6 +56,8 @@ namespace McpUnity.Tools
                           "Operations use the same format as batch_execute: [{\"tool\": \"update_component\", \"params\": {...}}, ...]. " +
                           "All objectPath references in operations resolve against the prefab hierarchy. " +
                           "Changes are saved automatically if any operation succeeds. " +
+                          "Set 'variantPath' to create a prefab variant from the source assetPath before applying operations. " +
+                          "When creating a variant, 'operations' is optional (variant is created even with no operations). " +
                           "Allowed sub-tools: update_component, remove_component, update_gameobject, duplicate_gameobject, " +
                           "delete_gameobject, reparent_gameobject, create_primitive, set_rect_transform, get_gameobject, " +
                           "select_gameobject, create_material, assign_material, modify_material, get_material_info, " +
@@ -111,18 +113,22 @@ namespace McpUnity.Tools
                 yield break;
             }
 
-            // Validate operations
+            // Check for variant creation
+            string variantPath = parameters["variantPath"]?.ToObject<string>();
+            bool creatingVariant = !string.IsNullOrEmpty(variantPath);
+
+            // Validate operations — required unless creating a variant
             JArray operations = parameters["operations"] as JArray;
-            if (operations == null || operations.Count == 0)
+            if (!creatingVariant && (operations == null || operations.Count == 0))
             {
                 tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
-                    "The 'operations' array is required and must contain at least one operation.",
+                    "The 'operations' array is required and must contain at least one operation (unless 'variantPath' is specified).",
                     "validation_error"
                 ));
                 yield break;
             }
 
-            if (operations.Count > 100)
+            if (operations != null && operations.Count > 100)
             {
                 tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
                     "Maximum of 100 operations allowed per modify_prefab call.",
@@ -143,11 +149,116 @@ namespace McpUnity.Tools
                 yield break;
             }
 
+            // Create variant if requested
+            string targetPath = assetPath;
+            if (creatingVariant)
+            {
+                if (!variantPath.StartsWith("Assets/"))
+                {
+                    tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
+                        "variantPath must start with 'Assets/'",
+                        "validation_error"
+                    ));
+                    yield break;
+                }
+
+                if (!variantPath.EndsWith(".prefab"))
+                {
+                    tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
+                        "variantPath must end with '.prefab'",
+                        "validation_error"
+                    ));
+                    yield break;
+                }
+
+                // Check if variant already exists
+                if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(variantPath, AssetPathToGUIDOptions.OnlyExistingAssets)))
+                {
+                    tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
+                        $"Asset already exists at variantPath: {variantPath}. Use assetPath to modify an existing prefab.",
+                        "validation_error"
+                    ));
+                    yield break;
+                }
+
+                // Ensure target directory exists
+                string directory = System.IO.Path.GetDirectoryName(variantPath);
+                if (!string.IsNullOrEmpty(directory) && !System.IO.Directory.Exists(directory))
+                {
+                    System.IO.Directory.CreateDirectory(directory);
+                    AssetDatabase.Refresh();
+                }
+
+                // Create the variant: instantiate source prefab -> save as new asset -> destroy temp instance
+                try
+                {
+                    var sourcePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                    if (sourcePrefab == null)
+                    {
+                        tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
+                            $"Failed to load source prefab at: {assetPath}",
+                            "prefab_load_error"
+                        ));
+                        yield break;
+                    }
+
+                    // InstantiatePrefab creates a prefab instance; SaveAsPrefabAsset on a prefab instance creates a variant
+                    var tempInstance = (GameObject)PrefabUtility.InstantiatePrefab(sourcePrefab);
+                    bool saveSuccess;
+                    PrefabUtility.SaveAsPrefabAsset(tempInstance, variantPath, out saveSuccess);
+                    UnityEngine.Object.DestroyImmediate(tempInstance);
+
+                    if (!saveSuccess)
+                    {
+                        tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
+                            $"Failed to create prefab variant at: {variantPath}",
+                            "prefab_save_error"
+                        ));
+                        yield break;
+                    }
+
+                    McpLogger.LogInfo($"Created prefab variant at {variantPath} from {assetPath}");
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
+                        $"Failed to create prefab variant: {ex.Message}",
+                        "prefab_save_error"
+                    ));
+                    yield break;
+                }
+
+                targetPath = variantPath;
+            }
+
+            // If no operations, return success (variant-only creation)
+            if (operations == null || operations.Count == 0)
+            {
+                tcs.SetResult(new JObject
+                {
+                    ["success"] = true,
+                    ["type"] = "text",
+                    ["message"] = $"Created prefab variant at {variantPath} from {assetPath}.",
+                    ["assetPath"] = targetPath,
+                    ["isVariant"] = true,
+                    ["sourceAssetPath"] = assetPath,
+                    ["results"] = new JArray(),
+                    ["summary"] = new JObject
+                    {
+                        ["total"] = 0,
+                        ["succeeded"] = 0,
+                        ["failed"] = 0,
+                        ["executed"] = 0
+                    }
+                });
+                yield break;
+            }
+
             // Load prefab contents into isolated editing context
             GameObject root;
             try
             {
-                root = PrefabUtility.LoadPrefabContents(assetPath);
+                root = PrefabUtility.LoadPrefabContents(targetPath);
             }
             catch (Exception ex)
             {
@@ -161,7 +272,7 @@ namespace McpUnity.Tools
             if (root == null)
             {
                 tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
-                    $"Failed to load prefab contents at path: {assetPath}",
+                    $"Failed to load prefab contents at path: {targetPath}",
                     "prefab_load_error"
                 ));
                 yield break;
@@ -316,17 +427,17 @@ namespace McpUnity.Tools
                 {
                     try
                     {
-                        PrefabUtility.SaveAsPrefabAsset(root, assetPath);
+                        PrefabUtility.SaveAsPrefabAsset(root, targetPath);
                     }
                     catch (Exception ex)
                     {
-                        McpLogger.LogError($"Failed to save prefab at {assetPath}: {ex.Message}");
+                        McpLogger.LogError($"Failed to save prefab at {targetPath}: {ex.Message}");
                         tcs.SetResult(new JObject
                         {
                             ["success"] = false,
                             ["type"] = "text",
                             ["message"] = $"Operations executed but failed to save prefab: {ex.Message}",
-                            ["assetPath"] = assetPath,
+                            ["assetPath"] = targetPath,
                             ["results"] = results,
                             ["summary"] = new JObject
                             {
@@ -359,23 +470,23 @@ namespace McpUnity.Tools
             string message;
             if (failed == 0)
             {
-                message = $"Successfully modified prefab at {assetPath}. {succeeded}/{operations.Count} operations executed.";
+                message = $"Successfully modified prefab at {targetPath}. {succeeded}/{operations.Count} operations executed.";
             }
             else if (stopOnError)
             {
-                message = $"Prefab modification stopped on error at {assetPath}. {succeeded}/{operations.Count} operations succeeded before failure.";
+                message = $"Prefab modification stopped on error at {targetPath}. {succeeded}/{operations.Count} operations succeeded before failure.";
             }
             else
             {
-                message = $"Prefab modification completed with errors at {assetPath}. {succeeded}/{operations.Count} operations succeeded, {failed} failed.";
+                message = $"Prefab modification completed with errors at {targetPath}. {succeeded}/{operations.Count} operations succeeded, {failed} failed.";
             }
 
-            tcs.SetResult(new JObject
+            var response = new JObject
             {
                 ["success"] = failed == 0,
                 ["type"] = "text",
                 ["message"] = message,
-                ["assetPath"] = assetPath,
+                ["assetPath"] = targetPath,
                 ["results"] = results,
                 ["summary"] = new JObject
                 {
@@ -384,7 +495,15 @@ namespace McpUnity.Tools
                     ["failed"] = failed,
                     ["executed"] = succeeded + failed
                 }
-            });
+            };
+
+            if (creatingVariant)
+            {
+                response["isVariant"] = true;
+                response["sourceAssetPath"] = assetPath;
+            }
+
+            tcs.SetResult(response);
         }
 
         private JObject CreateOperationResult(int index, string id, bool success, JObject result, string error)
