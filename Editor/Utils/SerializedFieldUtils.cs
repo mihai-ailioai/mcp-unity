@@ -447,11 +447,31 @@ namespace McpUnity.Tools
                 return null;
             }
 
+            // Handle null tokens — allow null for reference types and nullable value types
+            if (token.Type == JTokenType.Null)
+            {
+                if (!targetType.IsValueType || Nullable.GetUnderlyingType(targetType) != null)
+                {
+                    return null;
+                }
+                throw new Exception($"Cannot assign null to value type '{targetType.Name}'");
+            }
+
+            // Handle $ref descriptors for UnityEngine.Object fields
             if (typeof(UnityEngine.Object).IsAssignableFrom(targetType)
                 && token.Type == JTokenType.Object
                 && token["$ref"] != null)
             {
                 return ResolveObjectReference((JObject)token, targetType);
+            }
+
+            // Handle arrays and lists — recurse into elements for proper $ref and type handling
+            if (token.Type == JTokenType.Array
+                && (targetType.IsArray
+                    || (targetType.IsGenericType
+                        && targetType.GetGenericTypeDefinition() == typeof(System.Collections.Generic.List<>))))
+            {
+                return ConvertJArrayToValue((JArray)token, targetType);
             }
 
             if (targetType == typeof(Vector2) && token.Type == JTokenType.Object)
@@ -561,8 +581,74 @@ namespace McpUnity.Tools
             }
             catch (Exception ex)
             {
-                McpLogger.LogError($"[MCP Unity] Error converting value to type {targetType.Name}: {ex.Message}");
-                return null;
+                throw new Exception($"Cannot convert JSON value to type '{targetType.Name}': {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Convert a JArray to an array or List of the specified target type.
+        /// Handles $ref descriptors within array elements for UnityEngine.Object references.
+        /// </summary>
+        private static object ConvertJArrayToValue(JArray jArray, Type targetType)
+        {
+            // Determine the element type
+            Type elementType;
+            bool isArray;
+
+            if (targetType.IsArray)
+            {
+                elementType = targetType.GetElementType();
+                isArray = true;
+            }
+            else if (targetType.IsGenericType &&
+                     (targetType.GetGenericTypeDefinition() == typeof(System.Collections.Generic.List<>)))
+            {
+                elementType = targetType.GetGenericArguments()[0];
+                isArray = false;
+            }
+            else
+            {
+                // Fallback for other IList/IEnumerable types — try Newtonsoft
+                throw new Exception(
+                    $"Cannot convert JSON array to type '{targetType.Name}'. " +
+                    "Only arrays (T[]) and List<T> are supported for $ref element resolution.");
+            }
+
+            // Convert each element, recursing into ConvertJTokenToValue for proper $ref handling
+            var elements = new System.Collections.Generic.List<object>(jArray.Count);
+            for (int i = 0; i < jArray.Count; i++)
+            {
+                try
+                {
+                    object element = ConvertJTokenToValue(jArray[i], elementType);
+                    elements.Add(element);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Error converting array element [{i}]: {ex.Message}");
+                }
+            }
+
+            if (isArray)
+            {
+                // Create typed array
+                Array result = Array.CreateInstance(elementType, elements.Count);
+                for (int i = 0; i < elements.Count; i++)
+                {
+                    result.SetValue(elements[i], i);
+                }
+                return result;
+            }
+            else
+            {
+                // Create typed List<T>
+                var listType = typeof(System.Collections.Generic.List<>).MakeGenericType(elementType);
+                var result = (System.Collections.IList)Activator.CreateInstance(listType, elements.Count);
+                for (int i = 0; i < elements.Count; i++)
+                {
+                    result.Add(elements[i]);
+                }
+                return result;
             }
         }
 
