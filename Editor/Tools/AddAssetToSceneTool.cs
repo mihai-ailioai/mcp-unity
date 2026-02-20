@@ -105,7 +105,7 @@ namespace McpUnity.Tools
                     // Otherwise try to find by path
                     else if (!string.IsNullOrEmpty(parentPath))
                     {
-                        parent = GameObject.Find(parentPath);
+                        parent = PrefabStageUtils.FindGameObject(parentPath);
                     }
                     
                     if (parent != null)

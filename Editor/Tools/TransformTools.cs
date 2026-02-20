@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using McpUnity.Unity;
+using McpUnity.Utils;
 using Newtonsoft.Json.Linq;
 
 namespace McpUnity.Tools
@@ -437,7 +438,7 @@ namespace McpUnity.Tools
             }
             else if (!string.IsNullOrEmpty(objectPath))
             {
-                gameObject = GameObject.Find(objectPath);
+                gameObject = PrefabStageUtils.FindGameObject(objectPath);
                 identifierInfo = $"path '{objectPath}'";
             }
             else

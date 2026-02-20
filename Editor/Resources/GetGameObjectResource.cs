@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
-using Newtonsoft.Json.Linq;
 using UnityEditor;
+using McpUnity.Utils;
+using Newtonsoft.Json.Linq;
 
 namespace McpUnity.Resources
 {
@@ -60,7 +61,7 @@ namespace McpUnity.Resources
             else
             {
                 // Otherwise, treat it as a name or hierarchical path
-                gameObject = GameObject.Find(idOrName);
+                gameObject = PrefabStageUtils.FindGameObject(idOrName);
             }
             
             // Check if the GameObject was found

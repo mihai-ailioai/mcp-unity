@@ -42,7 +42,7 @@ namespace McpUnity.Tools
             }
             else if (!string.IsNullOrEmpty(objectPath))
             {
-                gameObject = GameObject.Find(objectPath);
+                gameObject = PrefabStageUtils.FindGameObject(objectPath);
             }
 
             if (gameObject == null)

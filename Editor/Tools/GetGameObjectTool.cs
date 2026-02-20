@@ -1,5 +1,6 @@
 using McpUnity.Resources;
 using McpUnity.Unity;
+using McpUnity.Utils;
 using UnityEngine;
 using UnityEditor;
 using Newtonsoft.Json.Linq;
@@ -58,7 +59,7 @@ namespace McpUnity.Tools
             else
             {
                 // Otherwise, treat it as a name or hierarchical path
-                gameObject = GameObject.Find(idOrName);
+                gameObject = PrefabStageUtils.FindGameObject(idOrName);
             }
 
             // Check if the GameObject was found

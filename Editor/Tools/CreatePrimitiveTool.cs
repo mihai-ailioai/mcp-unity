@@ -58,7 +58,7 @@ namespace McpUnity.Tools
                 }
                 else
                 {
-                    parent = GameObject.Find(parentPath);
+                    parent = PrefabStageUtils.FindGameObject(parentPath);
                 }
 
                 if (parent != null)

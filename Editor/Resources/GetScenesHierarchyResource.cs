@@ -2,17 +2,17 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEditor.SceneManagement;
+using McpUnity.Utils;
 using Newtonsoft.Json.Linq;
 
 namespace McpUnity.Resources
 {
     /// <summary>
-    /// Resource for retrieving all game objects in the Unity scenes hierarchy
+    /// Resource for retrieving all game objects in the Unity scenes hierarchy.
+    /// When in Prefab Mode, returns the prefab stage contents instead of scene hierarchy.
     /// </summary>
-    /// <summary>
-/// Resource for retrieving all game objects in the Unity scenes hierarchy
-/// </summary>
-public class GetScenesHierarchyResource : McpResourceBase
+    public class GetScenesHierarchyResource : McpResourceBase
     {
         public GetScenesHierarchyResource()
         {
@@ -22,22 +22,52 @@ public class GetScenesHierarchyResource : McpResourceBase
         }
         
         /// <summary>
-        /// Fetch all game objects in the Unity loaded scenes
+        /// Fetch all game objects in the Unity loaded scenes, or prefab stage contents if in Prefab Mode
         /// </summary>
         /// <param name="parameters">Resource parameters as a JObject (not used)</param>
         /// <returns>A JObject containing the hierarchy of game objects</returns>
         public override JObject Fetch(JObject parameters)
         {
-            // Get all game objects in the hierarchy
+            // Check if we're in Prefab Mode — if so, return prefab stage contents
+            var prefabStage = PrefabStageUtils.GetCurrentPrefabStage();
+            if (prefabStage != null)
+            {
+                JArray prefabHierarchy = GetPrefabStageHierarchy(prefabStage);
+                return new JObject
+                {
+                    ["success"] = true,
+                    ["message"] = $"In Prefab Mode: editing '{prefabStage.prefabContentsRoot.name}'",
+                    ["isPrefabStage"] = true,
+                    ["prefabAssetPath"] = prefabStage.assetPath,
+                    ["hierarchy"] = prefabHierarchy
+                };
+            }
+
+            // Normal scene hierarchy
             JArray hierarchyArray = GetSceneHierarchy();
                 
-            // Create the response
             return new JObject
             {
                 ["success"] = true,
                 ["message"] = $"Retrieved hierarchy with {hierarchyArray.Count} root objects",
                 ["hierarchy"] = hierarchyArray
             };
+        }
+
+        /// <summary>
+        /// Get the hierarchy of the prefab currently open in Prefab Mode
+        /// </summary>
+        private JArray GetPrefabStageHierarchy(PrefabStage prefabStage)
+        {
+            JArray rootArray = new JArray();
+
+            GameObject prefabRoot = prefabStage.prefabContentsRoot;
+            if (prefabRoot != null)
+            {
+                rootArray.Add(GetGameObjectResource.GameObjectToJObject(prefabRoot, false));
+            }
+
+            return rootArray;
         }
         
         /// <summary>
@@ -70,11 +100,9 @@ public class GetScenesHierarchyResource : McpResourceBase
                 
                 foreach (GameObject rootObject in rootObjects)
                 {
-                    // Add the root object and its children to the array
                     rootObjectsInScene.Add(GetGameObjectResource.GameObjectToJObject(rootObject, false));
                 }
                 
-                // Add the scene to the root objects array
                 rootObjectsArray.Add(sceneObject);
             }
             

@@ -34,7 +34,7 @@ namespace McpUnity.Utils
                 Transform childTransform;
                 if (currentParent == null)
                 {
-                    GameObject rootObj = GameObject.Find(name);
+                    GameObject rootObj = PrefabStageUtils.FindGameObject(name);
                     childTransform = rootObj?.transform;
                 }
                 else

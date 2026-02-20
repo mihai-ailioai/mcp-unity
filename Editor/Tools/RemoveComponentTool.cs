@@ -50,7 +50,7 @@ namespace McpUnity.Tools
             }
             else
             {
-                gameObject = GameObject.Find(objectPath);
+                gameObject = PrefabStageUtils.FindGameObject(objectPath);
                 identifier = $"path '{objectPath}'";
             }
 

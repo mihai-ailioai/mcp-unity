@@ -588,7 +588,7 @@ namespace McpUnity.Tools
             }
             else
             {
-                referencedObject = GameObject.Find(objectPath);
+                referencedObject = PrefabStageUtils.FindGameObject(objectPath);
                 if (referencedObject == null)
                 {
                     referencedObject = FindGameObjectByPath(objectPath);

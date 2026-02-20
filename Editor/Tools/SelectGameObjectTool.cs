@@ -48,12 +48,12 @@ namespace McpUnity.Tools
             else if (!string.IsNullOrEmpty(objectPath))
             {
                 // Try to find the object by path in the hierarchy
-                selectedGameObject = GameObject.Find(objectPath);
+                selectedGameObject = PrefabStageUtils.FindGameObject(objectPath);
             }
             else
             {
                 // Try to find the object by name in the hierarchy
-                selectedGameObject = GameObject.Find(objectName);
+                selectedGameObject = PrefabStageUtils.FindGameObject(objectName);
             }
             
             Selection.activeGameObject = selectedGameObject;

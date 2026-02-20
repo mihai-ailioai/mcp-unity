@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEditor;
 using McpUnity.Unity;
+using McpUnity.Utils;
 using Newtonsoft.Json.Linq;
 
 namespace McpUnity.Tools
@@ -31,7 +32,7 @@ namespace McpUnity.Tools
             }
             else if (!string.IsNullOrEmpty(objectPath))
             {
-                gameObject = GameObject.Find(objectPath);
+                gameObject = PrefabStageUtils.FindGameObject(objectPath);
                 if (gameObject == null)
                 {
                     // Try finding by traversing hierarchy
@@ -161,7 +162,7 @@ namespace McpUnity.Tools
             }
             else if (!string.IsNullOrEmpty(newParentPath))
             {
-                newParent = GameObject.Find(newParentPath);
+                newParent = PrefabStageUtils.FindGameObject(newParentPath);
                 if (newParent == null)
                 {
                     return McpUnitySocketHandler.CreateErrorResponse(
@@ -329,7 +330,7 @@ namespace McpUnity.Tools
             }
             else if (!string.IsNullOrEmpty(newParentPath))
             {
-                GameObject newParent = GameObject.Find(newParentPath);
+                GameObject newParent = PrefabStageUtils.FindGameObject(newParentPath);
                 if (newParent == null)
                 {
                     return McpUnitySocketHandler.CreateErrorResponse(
