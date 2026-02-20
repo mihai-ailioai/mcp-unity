@@ -340,16 +340,6 @@ namespace McpUnity.Tools
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                // Catch any unexpected exceptions to ensure tcs is resolved
-                McpLogger.LogError($"Unexpected error during modify_prefab: {ex.Message}\n{ex.StackTrace}");
-                tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
-                    $"Unexpected error during prefab modification: {ex.Message}",
-                    "internal_error"
-                ));
-                yield break;
-            }
             finally
             {
                 // Always clean up: clear context and unload prefab contents
