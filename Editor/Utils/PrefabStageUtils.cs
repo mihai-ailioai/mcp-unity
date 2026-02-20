@@ -5,12 +5,26 @@ using UnityEditor.SceneManagement;
 namespace McpUnity.Utils
 {
     /// <summary>
-    /// Utility methods for Prefab Stage (Prefab Mode) awareness.
-    /// When the user has a prefab open in Prefab Mode, all lookups and hierarchy
-    /// queries should target the prefab stage contents instead of the main scenes.
+    /// Utility methods for Prefab Stage (Prefab Mode) and headless prefab editing awareness.
+    /// When the user has a prefab open in Prefab Mode, or when a prefab is loaded headlessly
+    /// via LoadPrefabContents, all lookups and hierarchy queries should target the prefab
+    /// contents instead of the main scenes.
     /// </summary>
     internal static class PrefabStageUtils
     {
+        private static GameObject _headlessPrefabRoot;
+
+        /// <summary>
+        /// The root GameObject of a headlessly loaded prefab (via PrefabUtility.LoadPrefabContents).
+        /// Set by ModifyPrefabTool before executing operations, cleared in finally block.
+        /// When non-null, FindGameObject resolves against this root instead of scene or prefab stage.
+        /// </summary>
+        public static GameObject HeadlessPrefabRoot
+        {
+            get => _headlessPrefabRoot;
+            set => _headlessPrefabRoot = value;
+        }
+
         /// <summary>
         /// Returns the current PrefabStage if one is active, or null otherwise.
         /// </summary>
@@ -21,6 +35,7 @@ namespace McpUnity.Utils
 
         /// <summary>
         /// Returns true if the editor is currently in Prefab Mode (a prefab stage is open).
+        /// Does NOT return true for headless prefab context.
         /// </summary>
         public static bool IsInPrefabStage()
         {
@@ -28,9 +43,26 @@ namespace McpUnity.Utils
         }
 
         /// <summary>
-        /// Prefab-stage-aware replacement for GameObject.Find().
-        /// When in Prefab Mode, searches the prefab stage hierarchy by path.
-        /// When not in Prefab Mode, falls back to standard GameObject.Find().
+        /// Returns true if a headless prefab editing context is active
+        /// (HeadlessPrefabRoot is set by ModifyPrefabTool).
+        /// </summary>
+        public static bool IsInHeadlessPrefabContext()
+        {
+            return _headlessPrefabRoot != null;
+        }
+
+        /// <summary>
+        /// Returns true if either Prefab Mode is active or a headless prefab context is set.
+        /// Useful for tools that need to guard against scene fallback in either context.
+        /// </summary>
+        public static bool IsInAnyPrefabContext()
+        {
+            return IsInPrefabStage() || IsInHeadlessPrefabContext();
+        }
+
+        /// <summary>
+        /// Prefab-context-aware replacement for GameObject.Find().
+        /// Priority: headless prefab root > prefab stage > scene.
         /// 
         /// Supports both absolute paths ("/Root/Child") and relative paths ("Root/Child").
         /// </summary>
@@ -41,12 +73,20 @@ namespace McpUnity.Utils
             if (string.IsNullOrEmpty(path))
                 return null;
 
+            // Headless prefab context takes highest priority
+            if (_headlessPrefabRoot != null)
+            {
+                return FindInHierarchy(_headlessPrefabRoot, path);
+            }
+
+            // Then check prefab stage
             var prefabStage = GetCurrentPrefabStage();
             if (prefabStage != null)
             {
                 return FindInPrefabStage(prefabStage, path);
             }
 
+            // Fall back to scene
             return GameObject.Find(path);
         }
 
@@ -59,6 +99,18 @@ namespace McpUnity.Utils
             if (root == null)
                 return null;
 
+            return FindInHierarchy(root, path);
+        }
+
+        /// <summary>
+        /// Searches for a GameObject by path within a given root hierarchy.
+        /// Shared logic for both prefab stage and headless prefab lookups.
+        /// </summary>
+        /// <param name="root">The root GameObject to search within</param>
+        /// <param name="path">The path to search for</param>
+        /// <returns>The found GameObject, or null if not found</returns>
+        private static GameObject FindInHierarchy(GameObject root, string path)
+        {
             // Strip leading slash if present
             string cleanPath = path.TrimStart('/');
 
@@ -80,7 +132,7 @@ namespace McpUnity.Utils
             if (directFind != null)
                 return directFind.gameObject;
 
-            // Try searching by name through the entire prefab hierarchy
+            // Try searching by name through the entire hierarchy
             return FindByNameRecursive(root.transform, cleanPath);
         }
 

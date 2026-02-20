@@ -38,6 +38,8 @@ import { registerCopyAssetTool } from './tools/copyAssetTool.js';
 import { registerDeleteAssetTool } from './tools/deleteAssetTool.js';
 import { registerGetImportSettingsTool } from './tools/getImportSettingsTool.js';
 import { registerUpdateImportSettingsTool } from './tools/updateImportSettingsTool.js';
+import { registerGetPrefabInfoTool } from './tools/getPrefabInfoTool.js';
+import { registerModifyPrefabTool } from './tools/modifyPrefabTool.js';
 import { registerBatchExecuteTool } from './tools/batchExecuteTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
@@ -115,6 +117,10 @@ registerCopyAssetTool(server, mcpUnity, toolLogger);
 registerDeleteAssetTool(server, mcpUnity, toolLogger);
 registerGetImportSettingsTool(server, mcpUnity, toolLogger);
 registerUpdateImportSettingsTool(server, mcpUnity, toolLogger);
+
+// Register Prefab Tools
+registerGetPrefabInfoTool(server, mcpUnity, toolLogger);
+registerModifyPrefabTool(server, mcpUnity, toolLogger);
 
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);

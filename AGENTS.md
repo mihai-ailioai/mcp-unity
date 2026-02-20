@@ -172,6 +172,8 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `delete_asset` — Delete assets via AssetDatabase (trash by default, optional permanent delete)
 - `get_import_settings` — Read import settings from any asset's AssetImporter (includes platform overrides for texture/audio)
 - `update_import_settings` — Update import settings on any AssetImporter via reflection, with platform override support for TextureImporter and AudioImporter
+- `get_prefab_info` — Get detailed information about a prefab asset by path without entering Prefab Mode (hierarchy, components, variant metadata)
+- `modify_prefab` — Modify a prefab asset headlessly via batched operations (same format as batch_execute) using LoadPrefabContents isolated editing context
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items

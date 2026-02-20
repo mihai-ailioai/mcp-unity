@@ -463,6 +463,13 @@ namespace McpUnity.Unity
             UpdateImportSettingsTool updateImportSettingsTool = new UpdateImportSettingsTool();
             _tools.Add(updateImportSettingsTool.Name, updateImportSettingsTool);
 
+            // Register Prefab Tools
+            GetPrefabInfoTool getPrefabInfoTool = new GetPrefabInfoTool();
+            _tools.Add(getPrefabInfoTool.Name, getPrefabInfoTool);
+
+            ModifyPrefabTool modifyPrefabTool = new ModifyPrefabTool(this);
+            _tools.Add(modifyPrefabTool.Name, modifyPrefabTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
