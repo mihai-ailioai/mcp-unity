@@ -130,7 +130,7 @@ namespace McpUnity.Tools
                 string fieldName = property.Name;
                 JToken fieldValue = property.Value;
 
-                if (string.IsNullOrEmpty(fieldName) || fieldValue.Type == JTokenType.Null)
+                if (string.IsNullOrEmpty(fieldName))
                 {
                     continue;
                 }
@@ -142,8 +142,20 @@ namespace McpUnity.Tools
                 {
                     try
                     {
-                        object value = ConvertJTokenToValue(fieldValue, fieldInfo.FieldType);
-                        fieldInfo.SetValue(target, value);
+                        // Allow setting null for reference types (e.g., clearing UnityEngine.Object references)
+                        if (fieldValue.Type == JTokenType.Null)
+                        {
+                            if (!fieldInfo.FieldType.IsValueType || Nullable.GetUnderlyingType(fieldInfo.FieldType) != null)
+                            {
+                                fieldInfo.SetValue(target, null);
+                            }
+                            // Skip silently for value types — null is not meaningful
+                        }
+                        else
+                        {
+                            object value = ConvertJTokenToValue(fieldValue, fieldInfo.FieldType);
+                            fieldInfo.SetValue(target, value);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -168,8 +180,19 @@ namespace McpUnity.Tools
                     }
                     try
                     {
-                        object value = ConvertJTokenToValue(fieldValue, propertyInfo.PropertyType);
-                        propertyInfo.SetValue(target, value);
+                        // Allow setting null for reference types (e.g., clearing UnityEngine.Object references)
+                        if (fieldValue.Type == JTokenType.Null)
+                        {
+                            if (!propertyInfo.PropertyType.IsValueType || Nullable.GetUnderlyingType(propertyInfo.PropertyType) != null)
+                            {
+                                propertyInfo.SetValue(target, null);
+                            }
+                        }
+                        else
+                        {
+                            object value = ConvertJTokenToValue(fieldValue, propertyInfo.PropertyType);
+                            propertyInfo.SetValue(target, value);
+                        }
                     }
                     catch (Exception ex)
                     {
