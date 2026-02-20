@@ -589,8 +589,9 @@ namespace McpUnity.Tools
             else
             {
                 referencedObject = PrefabStageUtils.FindGameObject(objectPath);
-                if (referencedObject == null)
+                if (referencedObject == null && !PrefabStageUtils.IsInPrefabStage())
                 {
+                    // Fallback to scene hierarchy traversal (skip in Prefab Mode)
                     referencedObject = FindGameObjectByPath(objectPath);
                 }
                 refIdentifier = $"objectPath '{objectPath}'";

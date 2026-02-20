@@ -33,9 +33,9 @@ namespace McpUnity.Tools
             else if (!string.IsNullOrEmpty(objectPath))
             {
                 gameObject = PrefabStageUtils.FindGameObject(objectPath);
-                if (gameObject == null)
+                if (gameObject == null && !PrefabStageUtils.IsInPrefabStage())
                 {
-                    // Try finding by traversing hierarchy
+                    // Try finding by traversing scene hierarchy (skip in Prefab Mode)
                     gameObject = FindGameObjectByPath(objectPath);
                 }
                 identifierInfo = $"path '{objectPath}'";

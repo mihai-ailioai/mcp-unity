@@ -62,9 +62,9 @@ namespace McpUnity.Tools
                 gameObject = PrefabStageUtils.FindGameObject(objectPath);
                 identifier = $"path '{objectPath}'";
                 
-                if (gameObject == null)
+                if (gameObject == null && !PrefabStageUtils.IsInPrefabStage())
                 {
-                    // Try to find using the Unity Scene hierarchy path
+                    // Try to find using scene hierarchy path (skip in Prefab Mode)
                     gameObject = SerializedFieldUtils.FindGameObjectByPath(objectPath);
                 }
             }

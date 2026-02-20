@@ -32,11 +32,13 @@ namespace McpUnity.Resources
             var prefabStage = PrefabStageUtils.GetCurrentPrefabStage();
             if (prefabStage != null)
             {
-                JArray prefabHierarchy = GetPrefabStageHierarchy(prefabStage);
+                GameObject prefabRoot = prefabStage.prefabContentsRoot;
+                string prefabName = prefabRoot != null ? prefabRoot.name : "Unknown";
+                JArray prefabHierarchy = GetPrefabStageHierarchy(prefabStage, prefabRoot);
                 return new JObject
                 {
                     ["success"] = true,
-                    ["message"] = $"In Prefab Mode: editing '{prefabStage.prefabContentsRoot.name}'",
+                    ["message"] = $"In Prefab Mode: editing '{prefabName}'",
                     ["isPrefabStage"] = true,
                     ["prefabAssetPath"] = prefabStage.assetPath,
                     ["hierarchy"] = prefabHierarchy
@@ -55,19 +57,28 @@ namespace McpUnity.Resources
         }
 
         /// <summary>
-        /// Get the hierarchy of the prefab currently open in Prefab Mode
+        /// Get the hierarchy of the prefab currently open in Prefab Mode,
+        /// wrapped in a scene-like object for consistent response shape.
         /// </summary>
-        private JArray GetPrefabStageHierarchy(PrefabStage prefabStage)
+        private JArray GetPrefabStageHierarchy(PrefabStage prefabStage, GameObject prefabRoot)
         {
-            JArray rootArray = new JArray();
-
-            GameObject prefabRoot = prefabStage.prefabContentsRoot;
+            JArray rootObjects = new JArray();
             if (prefabRoot != null)
             {
-                rootArray.Add(GetGameObjectResource.GameObjectToJObject(prefabRoot, false));
+                rootObjects.Add(GetGameObjectResource.GameObjectToJObject(prefabRoot, false));
             }
 
-            return rootArray;
+            // Wrap in scene-like object for consistent response shape
+            JObject prefabEntry = new JObject
+            {
+                ["name"] = prefabRoot != null ? prefabRoot.name : "Unknown",
+                ["path"] = prefabStage.assetPath,
+                ["isPrefabStage"] = true,
+                ["isDirty"] = false,
+                ["rootObjects"] = rootObjects
+            };
+
+            return new JArray { prefabEntry };
         }
         
         /// <summary>

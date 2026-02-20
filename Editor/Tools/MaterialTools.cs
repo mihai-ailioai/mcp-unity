@@ -185,9 +185,9 @@ namespace McpUnity.Tools
             {
                 gameObject = PrefabStageUtils.FindGameObject(objectPath);
 
-                if (gameObject == null)
+                if (gameObject == null && !PrefabStageUtils.IsInPrefabStage())
                 {
-                    // Try to find using hierarchy path
+                    // Try to find using scene hierarchy path (skip in Prefab Mode)
                     gameObject = FindGameObjectByPath(objectPath);
                 }
             }
