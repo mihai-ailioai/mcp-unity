@@ -85,6 +85,12 @@ namespace McpUnity.Tools {
                 
             if (EditorApplication.isCompiling == false)
             {
+                // Refresh AssetDatabase first so Unity picks up any new/modified scripts
+                // written to disk externally (e.g., by a coding agent). Without this,
+                // CompilationPipeline.RequestScriptCompilation() only compiles files
+                // Unity already knows about.
+                AssetDatabase.Refresh();
+                
                 McpLogger.LogInfo("Recompiling all scripts in the Unity project");
                 CompilationPipeline.RequestScriptCompilation();
             }
