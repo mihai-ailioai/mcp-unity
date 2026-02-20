@@ -467,6 +467,10 @@ namespace McpUnity.Unity
             SetupAnimationClipTool setupAnimationClipTool = new SetupAnimationClipTool();
             _tools.Add(setupAnimationClipTool.Name, setupAnimationClipTool);
 
+            // Register SetupAnimatorControllerTool
+            SetupAnimatorControllerTool setupAnimatorControllerTool = new SetupAnimatorControllerTool();
+            _tools.Add(setupAnimatorControllerTool.Name, setupAnimatorControllerTool);
+
             // Register Prefab Tools
             GetPrefabInfoTool getPrefabInfoTool = new GetPrefabInfoTool();
             _tools.Add(getPrefabInfoTool.Name, getPrefabInfoTool);
