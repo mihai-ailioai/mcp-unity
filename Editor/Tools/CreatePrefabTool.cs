@@ -89,9 +89,18 @@ namespace McpUnity.Tools
                 Type scriptType = SerializedFieldUtils.FindType(componentName, typeof(Component));
                 if (scriptType == null)
                 {
+                    // Log available assemblies for debugging
+                    var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                    var asmCSharp = System.Array.Find(assemblies, a => a.GetName().Name == "Assembly-CSharp");
+                    string diagnostics = asmCSharp != null 
+                        ? $"Assembly-CSharp loaded with {asmCSharp.GetTypes().Length} types" 
+                        : "Assembly-CSharp NOT loaded (scripts may still be compiling)";
+                    McpLogger.LogError($"Component type '{componentName}' not found. {diagnostics}");
+                    
                     UnityEngine.Object.DestroyImmediate(tempObject);
                     return McpUnitySocketHandler.CreateErrorResponse(
-                        $"Component type '{componentName}' not found. Make sure the script is compiled and the name is correct (short name or fully qualified).", 
+                        $"Component type '{componentName}' not found. {diagnostics}. Make sure the script is compiled and the name is correct (short name or fully qualified). " +
+                        "If this happens right after creating a script, try calling recompile_scripts first, or use create_prefab without a component and then modify_prefab to add it.", 
                         "component_error"
                     );
                 }
