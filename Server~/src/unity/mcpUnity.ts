@@ -487,6 +487,41 @@ export class McpUnity {
   }
 
   /**
+   * Wait for a disconnect+reconnect cycle to complete (e.g., after Unity domain reload).
+   * Returns a Promise that resolves when the connection transitions back to Connected
+   * after being disconnected/reconnecting, or rejects after timeout.
+   * If already disconnected/reconnecting, waits for the next Connected state.
+   * @param timeoutMs Maximum time to wait (default: 60000ms = 60s)
+   */
+  public waitForReconnect(timeoutMs: number = 60000): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      // If not connected, we might already be in a disconnect phase
+      let sawDisconnect = !this.isConnected;
+      
+      const cleanup = () => {
+        removeListener();
+        clearTimeout(timer);
+      };
+
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new McpUnityError(ErrorType.TIMEOUT, `Timed out waiting for reconnection after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      const removeListener = this.onConnectionStateChange((change: ConnectionStateChange) => {
+        if (change.currentState === ConnectionState.Disconnected || 
+            change.currentState === ConnectionState.Reconnecting) {
+          sawDisconnect = true;
+        }
+        if (sawDisconnect && change.currentState === ConnectionState.Connected) {
+          cleanup();
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
    * Force a reconnection to Unity
    * Useful when Unity has reloaded and the connection may be stale
    */
