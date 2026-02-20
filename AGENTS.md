@@ -174,6 +174,9 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `update_import_settings` — Update import settings on any AssetImporter via reflection, with platform override support for TextureImporter and AudioImporter
 - `get_prefab_info` — Get detailed information about a prefab asset by path without entering Prefab Mode (hierarchy, components, variant metadata)
 - `modify_prefab` — Modify a prefab asset headlessly via batched operations (same format as batch_execute) using LoadPrefabContents isolated editing context
+- `setup_animation_clip` — Create or update AnimationClip assets with curves, keyframes, tangents, events, and loop settings (upsert by propertyPath+type+relativePath match, removals via removeCurves/removeEvents)
+- `setup_animator_controller` — Create or update AnimatorController assets with parameters, layers, states, transitions, and conditions (upsert states by name+layerIndex, parameters by name, transitions additive, removals via removeStates/removeTransitions/removeParameters/removeLayers)
+- `get_animator_info` — Inspect Animator component on a GameObject: controller path, parameters, layers with states and transitions, optional clip details (curve bindings, events)
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
