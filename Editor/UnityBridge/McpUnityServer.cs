@@ -471,6 +471,10 @@ namespace McpUnity.Unity
             SetupAnimatorControllerTool setupAnimatorControllerTool = new SetupAnimatorControllerTool();
             _tools.Add(setupAnimatorControllerTool.Name, setupAnimatorControllerTool);
 
+            // Register GetAnimatorInfoTool
+            GetAnimatorInfoTool getAnimatorInfoTool = new GetAnimatorInfoTool();
+            _tools.Add(getAnimatorInfoTool.Name, getAnimatorInfoTool);
+
             // Register Prefab Tools
             GetPrefabInfoTool getPrefabInfoTool = new GetPrefabInfoTool();
             _tools.Add(getPrefabInfoTool.Name, getPrefabInfoTool);
