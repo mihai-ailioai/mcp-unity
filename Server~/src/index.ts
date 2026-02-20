@@ -44,6 +44,7 @@ import { registerBatchExecuteTool } from './tools/batchExecuteTool.js';
 import { registerSetupAnimationClipTool } from './tools/setupAnimationClipTool.js';
 import { registerSetupAnimatorControllerTool } from './tools/setupAnimatorControllerTool.js';
 import { registerGetAnimatorInfoTool } from './tools/getAnimatorInfoTool.js';
+import { registerFindGameObjectsTool } from './tools/findGameObjectsTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
 import { registerGetHierarchyResource } from './resources/getScenesHierarchyResource.js';
@@ -123,6 +124,7 @@ registerUpdateImportSettingsTool(server, mcpUnity, toolLogger);
 registerSetupAnimationClipTool(server, mcpUnity, toolLogger);
 registerSetupAnimatorControllerTool(server, mcpUnity, toolLogger);
 registerGetAnimatorInfoTool(server, mcpUnity, toolLogger);
+registerFindGameObjectsTool(server, mcpUnity, toolLogger);
 
 // Register Prefab Tools
 registerGetPrefabInfoTool(server, mcpUnity, toolLogger);

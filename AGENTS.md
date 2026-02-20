@@ -177,6 +177,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `setup_animation_clip` — Create or update AnimationClip assets with curves, keyframes, tangents, events, and loop settings (upsert by propertyPath+type+relativePath match, removals via removeCurves/removeEvents)
 - `setup_animator_controller` — Create or update AnimatorController assets with parameters, layers, states, transitions, and conditions (upsert states by name+layerIndex, parameters by name, transitions additive, removals via removeStates/removeTransitions/removeParameters/removeLayers)
 - `get_animator_info` — Inspect Animator component on a GameObject: controller path, parameters, layers with states and transitions, optional clip details (curve bindings, events)
+- `find_gameobjects` — Search scene hierarchy by component type, name pattern, tag, layer, and optional root scope
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
@@ -193,4 +194,3 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
   - config shape or default ports/paths change,
   - the bridge protocol changes (request/response contract).
 - Keep it **high-signal**: where to edit code, how to run/build/debug, and the invariants that prevent subtle breakage.
-

@@ -475,6 +475,10 @@ namespace McpUnity.Unity
             GetAnimatorInfoTool getAnimatorInfoTool = new GetAnimatorInfoTool();
             _tools.Add(getAnimatorInfoTool.Name, getAnimatorInfoTool);
 
+            // Register FindGameObjectsTool
+            FindGameObjectsTool findGameObjectsTool = new FindGameObjectsTool();
+            _tools.Add(findGameObjectsTool.Name, findGameObjectsTool);
+
             // Register Prefab Tools
             GetPrefabInfoTool getPrefabInfoTool = new GetPrefabInfoTool();
             _tools.Add(getPrefabInfoTool.Name, getPrefabInfoTool);
