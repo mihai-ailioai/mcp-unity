@@ -6,7 +6,14 @@ import { McpUnityError, ErrorType } from '../utils/errors.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 const toolName = 'control_editor';
-const toolDescription = 'Controls Unity editor play mode state. Actions: play (enter play mode), pause (pause play mode), unpause (resume play mode), stop (exit play mode), step (advance one frame while playing). Note: play and stop can trigger Unity domain reload.';
+const toolDescription = `Controls Unity editor play mode state.
+
+Actions:
+- play: Enter play mode (triggers domain reload — waits for Unity to reconnect)
+- pause: Pause play mode (only while playing)
+- unpause: Resume from pause
+- stop: Exit play mode (triggers domain reload — waits for Unity to reconnect)
+- step: Advance one frame (only while playing)`;
 const paramsSchema = z.object({
   action: z.enum(['play', 'pause', 'unpause', 'stop', 'step'])
 });
@@ -49,15 +56,18 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
 
   let message = response.message || 'Editor state updated.';
 
+  // play and stop trigger domain reload — wait for reconnect only when state actually changed
   const shouldWaitForReconnect = (action === 'play' || action === 'stop') && response.stateChanged === true;
 
   if (shouldWaitForReconnect) {
+    logger.info(`Editor action '${action}' triggered state change. Waiting for domain reload reconnect...`);
     try {
       await mcpUnity.waitForReconnect(120000);
+      logger.info('Domain reload complete.');
       message += ' Domain reload complete.';
     } catch (err) {
       logger.warn(`Timed out waiting for domain reload after '${action}': ${err instanceof Error ? err.message : String(err)}`);
-      message += ' WARNING: Timed out waiting for domain reload reconnect.';
+      message += ' Warning: domain reload may still be in progress (reconnect timed out).';
     }
   }
 
@@ -69,7 +79,7 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
       },
       {
         type: 'text' as const,
-        text: JSON.stringify(response.editorState)
+        text: JSON.stringify(response.editorState, null, 2)
       }
     ],
     data: {
