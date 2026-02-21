@@ -523,6 +523,10 @@ namespace McpUnity.Unity
             // Register GetGameObjectResource
             GetGameObjectResource getGameObjectResource = new GetGameObjectResource();
             _resources.Add(getGameObjectResource.Name, getGameObjectResource);
+            
+            // Register GetSelectionResource
+            GetSelectionResource getSelectionResource = new GetSelectionResource();
+            _resources.Add(getSelectionResource.Name, getSelectionResource);
         }
         
         /// <summary>
