@@ -329,46 +329,74 @@ namespace McpUnity.Tools
         }
 
         /// <summary>
-        /// Reduces a keyframe array by collapsing runs of identical values.
-        /// Keyframes with the same value, inTangent, and outTangent as their neighbors
-        /// are collapsed to just the first and last of the run, preserving animation fidelity.
+        /// Reduces a baked keyframe array to essential control points using iterative
+        /// curve simplification. Builds an AnimationCurve from candidate keyframes and
+        /// checks if it reproduces the original curve within tolerance. Iteratively adds
+        /// the keyframe with the largest error until all samples are within tolerance.
         /// </summary>
         private static List<Keyframe> ReduceKeyframes(Keyframe[] keys)
         {
-            if (keys.Length <= 2)
+            if (keys.Length <= 3)
             {
                 return new List<Keyframe>(keys);
             }
 
-            List<Keyframe> result = new List<Keyframe>();
-            result.Add(keys[0]); // Always keep the first keyframe
+            // Build the original curve for reference evaluation
+            AnimationCurve originalCurve = new AnimationCurve(keys);
 
-            for (int i = 1; i < keys.Length - 1; i++)
+            // Start with just the first and last keyframes
+            List<int> selectedIndices = new List<int> { 0, keys.Length - 1 };
+            HashSet<int> selectedSet = new HashSet<int> { 0, keys.Length - 1 };
+
+            // Tolerance for value matching — small enough to preserve visual fidelity
+            const float tolerance = 1e-4f;
+
+            // Iteratively add the keyframe with the worst error
+            while (true)
             {
-                Keyframe prev = keys[i - 1];
-                Keyframe curr = keys[i];
-                Keyframe next = keys[i + 1];
-
-                // Keep this keyframe if it differs from its predecessor OR its successor
-                bool sameAsPrev = KeyframeValuesEqual(prev, curr);
-                bool sameAsNext = KeyframeValuesEqual(curr, next);
-
-                if (!sameAsPrev || !sameAsNext)
+                // Build a reduced curve from selected keyframes
+                AnimationCurve reducedCurve = new AnimationCurve();
+                foreach (int idx in selectedIndices)
                 {
-                    result.Add(curr);
+                    reducedCurve.AddKey(keys[idx]);
                 }
+
+                // Find the keyframe with the largest deviation from the original
+                float worstError = 0f;
+                int worstIndex = -1;
+
+                for (int i = 1; i < keys.Length - 1; i++)
+                {
+                    if (selectedSet.Contains(i))
+                        continue;
+
+                    float originalValue = originalCurve.Evaluate(keys[i].time);
+                    float reducedValue = reducedCurve.Evaluate(keys[i].time);
+                    float error = Math.Abs(originalValue - reducedValue);
+
+                    if (error > worstError)
+                    {
+                        worstError = error;
+                        worstIndex = i;
+                    }
+                }
+
+                // If the worst error is within tolerance, we're done
+                if (worstError <= tolerance || worstIndex == -1)
+                    break;
+
+                // Add the worst-error keyframe and keep list sorted
+                selectedIndices.Add(worstIndex);
+                selectedIndices.Sort();
+                selectedSet.Add(worstIndex);
             }
 
-            result.Add(keys[keys.Length - 1]); // Always keep the last keyframe
+            List<Keyframe> result = new List<Keyframe>();
+            foreach (int idx in selectedIndices)
+            {
+                result.Add(keys[idx]);
+            }
             return result;
-        }
-
-        private static bool KeyframeValuesEqual(Keyframe a, Keyframe b)
-        {
-            const float epsilon = 1e-6f;
-            return Math.Abs(a.value - b.value) < epsilon
-                && Math.Abs(a.inTangent - b.inTangent) < epsilon
-                && Math.Abs(a.outTangent - b.outTangent) < epsilon;
         }
 
         private static JArray SerializeTransitions(AnimatorStateMachine stateMachine)
