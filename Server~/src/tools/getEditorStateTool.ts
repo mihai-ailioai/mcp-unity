@@ -39,18 +39,18 @@ async function toolHandler(mcpUnity: McpUnity) {
     throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || 'Failed to get editor state');
   }
 
-  const editorState = response.editorState;
-  const activeScene = editorState.activeScene;
-  let text = `Play Mode: ${editorState.playModeState}\n`;
-  text += `Is Playing: ${editorState.isPlaying}\n`;
-  text += `Is Paused: ${editorState.isPaused}\n`;
-  text += `Is Compiling: ${editorState.isCompiling}\n`;
-  text += `Platform: ${editorState.platform}\n`;
-  text += `Unity Version: ${editorState.unityVersion}\n`;
+  const editorState = response.editorState ?? {};
+  const activeScene = editorState.activeScene ?? {};
+  let text = `Play Mode: ${editorState.playModeState ?? 'Unknown'}\n`;
+  text += `Is Playing: ${editorState.isPlaying ?? false}\n`;
+  text += `Is Paused: ${editorState.isPaused ?? false}\n`;
+  text += `Is Compiling: ${editorState.isCompiling ?? false}\n`;
+  text += `Platform: ${editorState.platform ?? 'Unknown'}\n`;
+  text += `Unity Version: ${editorState.unityVersion ?? 'Unknown'}\n`;
   text += `Active Scene: ${activeScene.name || '(untitled)'}\n`;
   text += `Scene Path: ${activeScene.path || '(unsaved)'}\n`;
-  text += `Scene Dirty: ${activeScene.isDirty}\n`;
-  text += `Scene Build Index: ${activeScene.buildIndex}`;
+  text += `Scene Dirty: ${activeScene.isDirty ?? false}\n`;
+  text += `Scene Build Index: ${activeScene.buildIndex ?? -1}`;
 
   return {
     content: [

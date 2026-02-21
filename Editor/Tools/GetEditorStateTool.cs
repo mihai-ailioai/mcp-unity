@@ -36,6 +36,30 @@ namespace McpUnity.Tools
                 Scene activeScene = SceneManager.GetActiveScene();
                 string buildTarget = EditorUserBuildSettings.activeBuildTarget.ToString();
 
+                JObject activeSceneObj;
+                if (activeScene.IsValid())
+                {
+                    activeSceneObj = new JObject
+                    {
+                        ["name"] = activeScene.name,
+                        ["path"] = activeScene.path,
+                        ["isDirty"] = activeScene.isDirty,
+                        ["buildIndex"] = activeScene.buildIndex,
+                        ["isValid"] = true
+                    };
+                }
+                else
+                {
+                    activeSceneObj = new JObject
+                    {
+                        ["name"] = "",
+                        ["path"] = "",
+                        ["isDirty"] = false,
+                        ["buildIndex"] = -1,
+                        ["isValid"] = false
+                    };
+                }
+
                 return new JObject
                 {
                     ["success"] = true,
@@ -47,13 +71,7 @@ namespace McpUnity.Tools
                         ["isPaused"] = isPaused,
                         ["isCompiling"] = isCompiling,
                         ["playModeState"] = playModeState,
-                        ["activeScene"] = new JObject
-                        {
-                            ["name"] = activeScene.name,
-                            ["path"] = activeScene.path,
-                            ["isDirty"] = activeScene.isDirty,
-                            ["buildIndex"] = activeScene.buildIndex
-                        },
+                        ["activeScene"] = activeSceneObj,
                         ["platform"] = buildTarget,
                         ["unityVersion"] = Application.unityVersion
                     }
