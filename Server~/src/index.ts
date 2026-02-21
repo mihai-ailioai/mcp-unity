@@ -46,6 +46,8 @@ import { registerSetupAnimatorControllerTool } from './tools/setupAnimatorContro
 import { registerGetAnimatorInfoTool } from './tools/getAnimatorInfoTool.js';
 import { registerFindGameObjectsTool } from './tools/findGameObjectsTool.js';
 import { registerGetSelectionTool } from './tools/getSelectionTool.js';
+import { registerGetHierarchyTool } from './tools/getHierarchyTool.js';
+import { registerGetMenuItemsTool } from './tools/getMenuItemsTool.js';
 import { registerGetMenuItemsResource } from './resources/getMenuItemResource.js';
 import { registerGetConsoleLogsResource } from './resources/getConsoleLogsResource.js';
 import { registerGetHierarchyResource } from './resources/getScenesHierarchyResource.js';
@@ -134,6 +136,10 @@ registerModifyPrefabTool(server, mcpUnity, toolLogger);
 
 // Register Selection Tool
 registerGetSelectionTool(server, mcpUnity, toolLogger);
+
+// Register Hierarchy and Menu Items Tools
+registerGetHierarchyTool(server, mcpUnity, toolLogger);
+registerGetMenuItemsTool(server, mcpUnity, toolLogger);
 
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);

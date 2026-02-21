@@ -377,6 +377,16 @@ namespace McpUnity.Unity
             GetSelectionTool getSelectionTool = new GetSelectionTool();
             _tools.Add(getSelectionTool.Name, getSelectionTool);
 
+            // Register GetHierarchyTool (wraps GetScenesHierarchyResource)
+            GetHierarchyTool getHierarchyTool = new GetHierarchyTool(
+                (GetScenesHierarchyResource)_resources["get_scenes_hierarchy"]);
+            _tools.Add(getHierarchyTool.Name, getHierarchyTool);
+
+            // Register GetMenuItemsTool (wraps GetMenuItemsResource)
+            GetMenuItemsTool getMenuItemsTool = new GetMenuItemsTool(
+                (GetMenuItemsResource)_resources["get_menu_items"]);
+            _tools.Add(getMenuItemsTool.Name, getMenuItemsTool);
+
             // Register DuplicateGameObjectTool
             DuplicateGameObjectTool duplicateGameObjectTool = new DuplicateGameObjectTool();
             _tools.Add(duplicateGameObjectTool.Name, duplicateGameObjectTool);
