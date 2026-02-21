@@ -281,8 +281,11 @@ namespace McpUnity.Tools
                 AnimationCurve animCurve = AnimationUtility.GetEditorCurve(clip, binding);
                 if (animCurve != null)
                 {
+                    Keyframe[] allKeys = animCurve.keys;
+                    List<Keyframe> reduced = ReduceKeyframes(allKeys);
+                    
                     JArray keys = new JArray();
-                    foreach (Keyframe keyframe in animCurve.keys)
+                    foreach (Keyframe keyframe in reduced)
                     {
                         keys.Add(new JObject
                         {
@@ -293,6 +296,8 @@ namespace McpUnity.Tools
                         });
                     }
                     curveObject["keys"] = keys;
+                    curveObject["keyCount"] = allKeys.Length;
+                    curveObject["reducedKeyCount"] = reduced.Count;
                 }
 
                 curves.Add(curveObject);
@@ -321,6 +326,49 @@ namespace McpUnity.Tools
                 ["curves"] = curves,
                 ["events"] = events
             };
+        }
+
+        /// <summary>
+        /// Reduces a keyframe array by collapsing runs of identical values.
+        /// Keyframes with the same value, inTangent, and outTangent as their neighbors
+        /// are collapsed to just the first and last of the run, preserving animation fidelity.
+        /// </summary>
+        private static List<Keyframe> ReduceKeyframes(Keyframe[] keys)
+        {
+            if (keys.Length <= 2)
+            {
+                return new List<Keyframe>(keys);
+            }
+
+            List<Keyframe> result = new List<Keyframe>();
+            result.Add(keys[0]); // Always keep the first keyframe
+
+            for (int i = 1; i < keys.Length - 1; i++)
+            {
+                Keyframe prev = keys[i - 1];
+                Keyframe curr = keys[i];
+                Keyframe next = keys[i + 1];
+
+                // Keep this keyframe if it differs from its predecessor OR its successor
+                bool sameAsPrev = KeyframeValuesEqual(prev, curr);
+                bool sameAsNext = KeyframeValuesEqual(curr, next);
+
+                if (!sameAsPrev || !sameAsNext)
+                {
+                    result.Add(curr);
+                }
+            }
+
+            result.Add(keys[keys.Length - 1]); // Always keep the last keyframe
+            return result;
+        }
+
+        private static bool KeyframeValuesEqual(Keyframe a, Keyframe b)
+        {
+            const float epsilon = 1e-6f;
+            return Math.Abs(a.value - b.value) < epsilon
+                && Math.Abs(a.inTangent - b.inTangent) < epsilon
+                && Math.Abs(a.outTangent - b.outTangent) < epsilon;
         }
 
         private static JArray SerializeTransitions(AnimatorStateMachine stateMachine)
