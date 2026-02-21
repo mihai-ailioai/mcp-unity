@@ -49,21 +49,11 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
     // already closing, causing "An error has occurred in sending data" on Unity side.
     //
     // Strategy:
-    // 1. Start waitForReconnect FIRST (so it's listening when disconnect happens)
-    // 2. Fire sendRequest but DON'T await it — let it settle in background
-    // 3. Wait for reconnect (the only reliable signal that Unity is back)
-    //
-    // For no-op cases (already playing/stopped), sendRequest returns fast with
-    // stateChanged=false. We race it against a short delay to detect this.
+    // 1. Fire sendRequest but DON'T await — let it settle in background
+    // 2. For no-op cases, the response comes back fast (race against 500ms)
+    // 3. For actual state changes, poll until connection is back and responsive
 
-    // Start reconnect listener BEFORE sending (catches disconnect immediately)
-    const reconnectPromise = mcpUnity.waitForReconnect(120000);
-
-    // Fire request — don't await. It will either:
-    // a) Resolve quickly (no-op case, stateChanged=false)
-    // b) Fail with connection error (domain reload killed the socket)
-    // c) Timeout after ~10s and trigger forceReconnect (undesirable but harmless
-    //    since waitForReconnect is already listening)
+    // Fire request — don't await
     let noOpResponse: any = null;
     const requestPromise = mcpUnity.sendRequest({
       method: toolName,
@@ -77,8 +67,7 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
       logger.info(`Request lost during domain reload for '${action}' (expected): ${err instanceof Error ? err.message : String(err)}`);
     });
 
-    // Give the no-op case a short window to resolve (500ms is plenty for a
-    // synchronous Unity response on localhost)
+    // Give the no-op case a short window to resolve
     await Promise.race([
       requestPromise,
       new Promise(resolve => setTimeout(resolve, 500))
@@ -95,25 +84,45 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
       };
     }
 
-    // Domain reload is happening — wait for reconnect
-    logger.info(`Waiting for domain reload reconnect after '${action}'...`);
-    try {
-      await reconnectPromise;
-      logger.info('Domain reload complete.');
-      const message = `Editor ${action === 'play' ? 'entered play mode' : 'stopped'}. Domain reload complete.`;
-      return {
-        content: [{ type: 'text' as const, text: message }],
-        data: { stateChanged: true, editorState: {} }
-      };
-    } catch (err) {
-      logger.warn(`Timed out waiting for domain reload after '${action}': ${err instanceof Error ? err.message : String(err)}`);
-      return {
-        content: [
-          { type: 'text' as const, text: `Editor ${action} command sent, but timed out waiting for domain reload reconnect. Unity may still be loading.` }
-        ],
-        data: { stateChanged: true, editorState: {} }
-      };
+    // Domain reload is happening — poll until Unity is back and responsive.
+    // We avoid waitForReconnect because the disconnect→reconnect cycle timing
+    // is unpredictable (stop exits play mode faster than play enters it, and
+    // the state change events may complete before the listener is registered).
+    logger.info(`Waiting for Unity to come back after '${action}'...`);
+    const pollStart = Date.now();
+    const pollTimeout = 120000;
+    const pollInterval = 500;
+
+    while (Date.now() - pollStart < pollTimeout) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      // Try a lightweight request to see if Unity is back
+      try {
+        const probe = await mcpUnity.sendRequest({
+          method: 'get_editor_state',
+          params: {}
+        });
+        if (probe?.success) {
+          logger.info('Domain reload complete — Unity is responsive.');
+          const message = `Editor ${action === 'play' ? 'entered play mode' : 'stopped'}. Domain reload complete.`;
+          return {
+            content: [{ type: 'text' as const, text: message }],
+            data: { stateChanged: true, editorState: probe.editorState ?? {} }
+          };
+        }
+      } catch {
+        // Not ready yet — keep polling
+      }
     }
+
+    // Timed out
+    logger.warn(`Timed out waiting for Unity after '${action}' (${pollTimeout}ms)`);
+    return {
+      content: [
+        { type: 'text' as const, text: `Editor ${action} command sent, but timed out waiting for Unity to come back. Unity may still be loading.` }
+      ],
+      data: { stateChanged: true, editorState: {} }
+    };
   }
 
   // pause/unpause/step — no domain reload, simple request/response
