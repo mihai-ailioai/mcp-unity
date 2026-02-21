@@ -504,6 +504,10 @@ namespace McpUnity.Unity
             ControlEditorTool controlEditorTool = new ControlEditorTool();
             _tools.Add(controlEditorTool.Name, controlEditorTool);
 
+            // Register GetEditorStateTool
+            GetEditorStateTool getEditorStateTool = new GetEditorStateTool();
+            _tools.Add(getEditorStateTool.Name, getEditorStateTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
