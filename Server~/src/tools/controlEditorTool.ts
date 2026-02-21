@@ -45,31 +45,53 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
 
   if (triggersReload) {
     // play/stop trigger domain reload which kills the WebSocket BEFORE the response
-    // can be sent back. Strategy: start listening for reconnect BEFORE sending the
-    // request, then treat connection errors as expected.
+    // can be sent back. The C# side tries to Send() the response but the socket is
+    // already closing, causing "An error has occurred in sending data" on Unity side.
+    //
+    // Strategy:
+    // 1. Start waitForReconnect FIRST (so it's listening when disconnect happens)
+    // 2. Fire sendRequest but DON'T await it — let it settle in background
+    // 3. Wait for reconnect (the only reliable signal that Unity is back)
+    //
+    // For no-op cases (already playing/stopped), sendRequest returns fast with
+    // stateChanged=false. We race it against a short delay to detect this.
+
+    // Start reconnect listener BEFORE sending (catches disconnect immediately)
     const reconnectPromise = mcpUnity.waitForReconnect(120000);
 
-    // Send the request — it may fail with connection error (expected during domain reload)
-    let response: any = null;
-    try {
-      response = await mcpUnity.sendRequest({
-        method: toolName,
-        params: { action }
-      });
-    } catch (err) {
-      // Connection error is expected — domain reload killed the WebSocket
+    // Fire request — don't await. It will either:
+    // a) Resolve quickly (no-op case, stateChanged=false)
+    // b) Fail with connection error (domain reload killed the socket)
+    // c) Timeout after ~10s and trigger forceReconnect (undesirable but harmless
+    //    since waitForReconnect is already listening)
+    let noOpResponse: any = null;
+    const requestPromise = mcpUnity.sendRequest({
+      method: toolName,
+      params: { action }
+    }).then(response => {
+      if (response?.stateChanged === false) {
+        noOpResponse = response;
+      }
+    }).catch(err => {
+      // Expected — domain reload killed the connection
       logger.info(`Request lost during domain reload for '${action}' (expected): ${err instanceof Error ? err.message : String(err)}`);
-    }
+    });
 
-    // If we got a response and it indicates no state change (already in target state),
-    // no domain reload will happen — return immediately
-    if (response && response.stateChanged === false) {
+    // Give the no-op case a short window to resolve (500ms is plenty for a
+    // synchronous Unity response on localhost)
+    await Promise.race([
+      requestPromise,
+      new Promise(resolve => setTimeout(resolve, 500))
+    ]);
+
+    // If we got a no-op response, return immediately (no domain reload)
+    if (noOpResponse) {
       return {
         content: [
-          { type: 'text' as const, text: response.message || 'No state change needed.' },
-          { type: 'text' as const, text: JSON.stringify(response.editorState, null, 2) }
+          { type: 'text' as const, text: noOpResponse.message || 'No state change needed.' },
+          { type: 'text' as const, text: JSON.stringify(noOpResponse.editorState, null, 2) }
         ],
-        data: { stateChanged: false, editorState: response.editorState }
+        data: { stateChanged: false, editorState: noOpResponse.editorState }
       };
     }
 
@@ -78,15 +100,10 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
     try {
       await reconnectPromise;
       logger.info('Domain reload complete.');
-      const message = response?.message
-        ? `${response.message} Domain reload complete.`
-        : `Editor ${action === 'play' ? 'entered play mode' : 'stopped'}. Domain reload complete.`;
+      const message = `Editor ${action === 'play' ? 'entered play mode' : 'stopped'}. Domain reload complete.`;
       return {
-        content: [
-          { type: 'text' as const, text: message },
-          { type: 'text' as const, text: JSON.stringify(response?.editorState ?? {}, null, 2) }
-        ],
-        data: { stateChanged: true, editorState: response?.editorState ?? {} }
+        content: [{ type: 'text' as const, text: message }],
+        data: { stateChanged: true, editorState: {} }
       };
     } catch (err) {
       logger.warn(`Timed out waiting for domain reload after '${action}': ${err instanceof Error ? err.message : String(err)}`);
