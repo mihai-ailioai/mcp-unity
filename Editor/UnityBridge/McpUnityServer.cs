@@ -500,6 +500,10 @@ namespace McpUnity.Unity
             ModifyPrefabTool modifyPrefabTool = new ModifyPrefabTool(this);
             _tools.Add(modifyPrefabTool.Name, modifyPrefabTool);
 
+            // Register ControlEditorTool
+            ControlEditorTool controlEditorTool = new ControlEditorTool();
+            _tools.Add(controlEditorTool.Name, controlEditorTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
