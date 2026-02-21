@@ -49,7 +49,9 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
 
   let message = response.message || 'Editor state updated.';
 
-  if (action === 'play' || action === 'stop') {
+  const shouldWaitForReconnect = (action === 'play' || action === 'stop') && response.stateChanged === true;
+
+  if (shouldWaitForReconnect) {
     try {
       await mcpUnity.waitForReconnect(120000);
       message += ' Domain reload complete.';
@@ -69,6 +71,10 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
         type: 'text' as const,
         text: JSON.stringify(response.editorState)
       }
-    ]
+    ],
+    data: {
+      stateChanged: response.stateChanged,
+      editorState: response.editorState
+    }
   };
 }

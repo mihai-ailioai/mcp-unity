@@ -42,12 +42,12 @@ namespace McpUnity.Tools
                     case "play":
                         if (EditorApplication.isPlaying)
                         {
-                            tcs.SetResult(CreateSuccessResponse("Editor is already in play mode."));
+                            tcs.SetResult(CreateStateResponse("Editor is already in play mode.", false));
                             return;
                         }
 
                         EditorApplication.isPlaying = true;
-                        tcs.SetResult(CreateSuccessResponse("Entering play mode."));
+                        tcs.SetResult(CreateStateResponse("Entering play mode."));
                         return;
 
                     case "pause":
@@ -62,12 +62,12 @@ namespace McpUnity.Tools
 
                         if (EditorApplication.isPaused)
                         {
-                            tcs.SetResult(CreateSuccessResponse("Editor is already paused."));
+                            tcs.SetResult(CreateStateResponse("Editor is already paused.", false));
                             return;
                         }
 
                         EditorApplication.isPaused = true;
-                        tcs.SetResult(CreateSuccessResponse("Editor paused."));
+                        tcs.SetResult(CreateStateResponse("Editor paused."));
                         return;
 
                     case "unpause":
@@ -82,23 +82,23 @@ namespace McpUnity.Tools
 
                         if (!EditorApplication.isPaused)
                         {
-                            tcs.SetResult(CreateSuccessResponse("Editor is already unpaused."));
+                            tcs.SetResult(CreateStateResponse("Editor is already unpaused.", false));
                             return;
                         }
 
                         EditorApplication.isPaused = false;
-                        tcs.SetResult(CreateSuccessResponse("Editor unpaused."));
+                        tcs.SetResult(CreateStateResponse("Editor unpaused."));
                         return;
 
                     case "stop":
                         if (!EditorApplication.isPlaying)
                         {
-                            tcs.SetResult(CreateSuccessResponse("Editor is already stopped."));
+                            tcs.SetResult(CreateStateResponse("Editor is already stopped.", false));
                             return;
                         }
 
                         EditorApplication.isPlaying = false;
-                        tcs.SetResult(CreateSuccessResponse("Stopping play mode."));
+                        tcs.SetResult(CreateStateResponse("Stopping play mode."));
                         return;
 
                     case "step":
@@ -112,7 +112,7 @@ namespace McpUnity.Tools
                         }
 
                         EditorApplication.Step();
-                        tcs.SetResult(CreateSuccessResponse("Advanced one frame."));
+                        tcs.SetResult(CreateStateResponse("Advanced one frame."));
                         return;
 
                     default:
@@ -133,13 +133,14 @@ namespace McpUnity.Tools
             }
         }
 
-        private static JObject CreateSuccessResponse(string message)
+        private static JObject CreateStateResponse(string message, bool stateChanged = true)
         {
             return new JObject
             {
                 ["success"] = true,
                 ["type"] = "text",
                 ["message"] = message,
+                ["stateChanged"] = stateChanged,
                 ["editorState"] = new JObject
                 {
                     ["isPlaying"] = EditorApplication.isPlaying,
