@@ -635,9 +635,10 @@ await import(pathToFileURL(resolve(server)).href);
             }
             catch (Exception ex)
             {
-                // Use commandToLog here
-                Debug.LogError($"[MCP Unity] Exception while running npm {arguments} in {workingDirectory}. Error: {ex.Message}");
+                Debug.LogError($"Failed to add MCP configuration to {productName}: {ex.Message}");
             }
+
+            return false;
         }
 
         /// <summary>
