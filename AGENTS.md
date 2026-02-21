@@ -178,6 +178,8 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `setup_animator_controller` — Create or update AnimatorController assets with parameters, layers, states, transitions, and conditions (upsert states by name+layerIndex, parameters by name, transitions additive, removals via removeStates/removeTransitions/removeParameters/removeLayers)
 - `get_animator_info` — Inspect Animator component on a GameObject: controller path, parameters, layers with states and transitions, optional clip details (curve bindings, events)
 - `find_gameobjects` — Search scene hierarchy by component type, name pattern, tag, layer, and optional root scope
+- `control_editor` — Control Unity play mode state (play, pause, unpause, stop, step) with automatic domain reload handling
+- `get_editor_state` — Get editor state snapshot (play mode, compilation status, active scene, build platform, Unity version)
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
