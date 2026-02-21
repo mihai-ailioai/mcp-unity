@@ -24,7 +24,7 @@ const paramsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "When true, includes clip metadata (length, frameRate, loop, curve bindings, and events) for clip-backed states and BlendTree children."
+      "When true, includes clip metadata (length, frameRate, loop, curve bindings with full keyframe data [time, value, inTangent, outTangent], and events) for clip-backed states and BlendTree children. Essential for reading existing animation values before modifying clips."
     ),
 });
 

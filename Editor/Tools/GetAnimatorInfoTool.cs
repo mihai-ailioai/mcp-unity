@@ -271,12 +271,31 @@ namespace McpUnity.Tools
             EditorCurveBinding[] bindings = AnimationUtility.GetCurveBindings(clip);
             foreach (EditorCurveBinding binding in bindings)
             {
-                curves.Add(new JObject
+                JObject curveObject = new JObject
                 {
                     ["propertyPath"] = binding.propertyName,
                     ["type"] = binding.type != null ? binding.type.Name : null,
                     ["relativePath"] = binding.path
-                });
+                };
+
+                AnimationCurve animCurve = AnimationUtility.GetEditorCurve(clip, binding);
+                if (animCurve != null)
+                {
+                    JArray keys = new JArray();
+                    foreach (Keyframe keyframe in animCurve.keys)
+                    {
+                        keys.Add(new JObject
+                        {
+                            ["time"] = keyframe.time,
+                            ["value"] = keyframe.value,
+                            ["inTangent"] = keyframe.inTangent,
+                            ["outTangent"] = keyframe.outTangent
+                        });
+                    }
+                    curveObject["keys"] = keys;
+                }
+
+                curves.Add(curveObject);
             }
 
             JArray events = new JArray();
