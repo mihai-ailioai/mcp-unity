@@ -22,8 +22,7 @@ namespace McpUnity.Unity
         private readonly string[] _tabNames = { "Server", "Supermemory", "Help" };
         private Vector2 _supermemoryTabScrollPosition = Vector2.zero;
         private bool _isInitialized = false;
-        private string _mcpConfigJson = "";
-        private bool _tabsIndentationJson = false;
+        
         private Vector2 _helpTabScrollPosition = Vector2.zero;
         private Vector2 _serverTabScrollPosition = Vector2.zero;
         private string _supermemoryApiKeyInput = string.Empty;
@@ -244,23 +243,6 @@ namespace McpUnity.Unity
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("MCP Configuration", EditorStyles.boldLabel);
 
-            var before = _tabsIndentationJson;
-            _tabsIndentationJson = EditorGUILayout.Toggle("Use Tabs indentation", _tabsIndentationJson);
-            
-            if (string.IsNullOrEmpty(_mcpConfigJson) || before != _tabsIndentationJson)
-            {
-                _mcpConfigJson = McpUtils.GenerateMcpConfigJson(_tabsIndentationJson);
-            }
-                
-            if (GUILayout.Button("Copy to Clipboard", GUILayout.Height(30)))
-            {
-                EditorGUIUtility.systemCopyBuffer = _mcpConfigJson;
-            }
-            
-            EditorGUILayout.TextArea(_mcpConfigJson, GUILayout.Height(200));
-
-            EditorGUILayout.Space();
-            
             ShowConfigButton("Windsurf", McpUtils.AddToWindsurfIdeConfig);
             
             EditorGUILayout.Space();
@@ -843,11 +825,11 @@ namespace McpUnity.Unity
         
             
         // Helper to show a config button with unified logic
-        private void ShowConfigButton(string configLabel, Func<bool, bool> configAction)
+        private void ShowConfigButton(string configLabel, Func<bool> configAction)
         {
             if (GUILayout.Button($"Configure {configLabel}", GUILayout.Height(30)))
             {
-                bool added = configAction(_tabsIndentationJson);
+                bool added = configAction();
                 if (added)
                 {
                     EditorUtility.DisplayDialog("Success", $"The MCP configuration was successfully added to the {configLabel} config file.", "OK");

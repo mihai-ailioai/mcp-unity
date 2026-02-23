@@ -11,9 +11,6 @@ using Newtonsoft.Json.Linq;
 namespace McpUnity.Utils
 {
     /// <summary>
-    /// Utility class for MCP configuration operations
-    /// </summary>
-    /// <summary>
     /// Utility class for MCP configuration and system operations
     /// </summary>
     public static class McpUtils
@@ -21,11 +18,77 @@ namespace McpUnity.Utils
 
         // Cached result for Multiplayer Play Mode clone detection
         private static bool? _isMultiplayerPlayModeClone;
-        
+
         /// <summary>
-        /// Generates the MCP configuration JSON to setup the Unity MCP server in different AI Clients
+        /// Gets the Unity project root directory (parent of Assets/).
         /// </summary>
-        public static string GenerateMcpConfigJson(bool useTabsIndentation)
+        public static string GetProjectRoot()
+        {
+            return Directory.GetParent(Application.dataPath).FullName;
+        }
+
+        /// <summary>
+        /// Gets the path to the wrapper script in the project root.
+        /// </summary>
+        private static string GetWrapperScriptPath()
+        {
+            return Path.Combine(GetProjectRoot(), "mcp-unity-server.mjs");
+        }
+
+        /// <summary>
+        /// Writes the portable wrapper script (mcp-unity-server.mjs) to the Unity project root.
+        /// This script dynamically resolves the mcp-unity package at runtime,
+        /// eliminating machine-specific paths from config files.
+        /// </summary>
+        /// <returns>True if the wrapper script was written successfully.</returns>
+        private static bool WriteWrapperScriptToProjectRoot()
+        {
+            try
+            {
+                string wrapperPath = GetWrapperScriptPath();
+                string wrapperContent = GenerateWrapperScript();
+                File.WriteAllText(wrapperPath, wrapperContent);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP Unity] Failed to write wrapper script: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Generates the MCP configuration JSON to setup the Unity MCP server in different AI Clients.
+        /// Uses the portable wrapper script (mcp-unity-server.mjs) with an absolute path to the project root.
+        /// </summary>
+        public static string GenerateMcpConfigJson()
+        {
+            // Absolute path to the wrapper script in the project root
+            string wrapperPath = GetWrapperScriptPath().Replace("\\", "/");
+
+            var config = new Dictionary<string, object>
+            {
+                { "mcpServers", new Dictionary<string, object>
+                    {
+                        { "mcp-unity", new Dictionary<string, object>
+                            {
+                                { "command", "node" },
+                                { "args", new[] { wrapperPath } }
+                            }
+                        }
+                    }
+                }
+            };
+
+            return JsonConvert.SerializeObject(config, Formatting.Indented);
+        }
+
+        /// <summary>
+        /// Generates the MCP configuration JSON for project-scoped configs (e.g., GitHub Copilot in .vscode/).
+        /// Uses a relative path to the wrapper script.
+        /// </summary>
+        /// <param name="relativeWrapperPath">Relative path from the config file to the wrapper script (e.g., "../mcp-unity-server.mjs")</param>
+        public static string GenerateProjectScopedMcpConfigJson(string relativeWrapperPath)
         {
             var config = new Dictionary<string, object>
             {
@@ -34,51 +97,29 @@ namespace McpUnity.Utils
                         { "mcp-unity", new Dictionary<string, object>
                             {
                                 { "command", "node" },
-                                { "args", new[] { Path.Combine(GetServerPath(), "build", "index.js") } }
+                                { "args", new[] { relativeWrapperPath } }
                             }
                         }
                     }
                 }
             };
 
-            // Initialize string writer with proper indentation
-            var stringWriter = new StringWriter();
-            using (var jsonWriter = new JsonTextWriter(stringWriter))
-            {
-                jsonWriter.Formatting = Formatting.Indented;
-
-                // Set indentation character and count
-                if (useTabsIndentation)
-                {
-                    jsonWriter.IndentChar = '\t';
-                    jsonWriter.Indentation = 1;
-                }
-                else
-                {
-                    jsonWriter.IndentChar = ' ';
-                    jsonWriter.Indentation = 2;
-                }
-
-                // Serialize directly to the JsonTextWriter
-                var serializer = new JsonSerializer();
-                serializer.Serialize(jsonWriter, config);
-            }
-
-            return stringWriter.ToString().Replace("\\", "/").Replace("//", "/");
+            return JsonConvert.SerializeObject(config, Formatting.Indented);
         }
 
         /// <summary>
-        /// Generates the MCP configuration TOML to setup the Unity MCP server in TOML-based AI Clients (e.g., Codex CLI)
+        /// Generates the MCP configuration TOML to setup the Unity MCP server in TOML-based AI Clients (e.g., Codex CLI).
+        /// Uses the portable wrapper script with an absolute path to the project root.
         /// </summary>
         /// <returns>The TOML configuration string for mcp-unity server</returns>
         public static string GenerateMcpConfigToml()
         {
-            string indexJsPath = Path.Combine(GetServerPath(), "build", "index.js").Replace("\\", "/");
+            string wrapperPath = GetWrapperScriptPath().Replace("\\", "/");
             
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("[mcp_servers.mcp-unity]");
             sb.AppendLine("command = \"node\"");
-            sb.AppendLine($"args = [\"{indexJsPath}\"]");
+            sb.AppendLine($"args = [\"{wrapperPath}\"]");
             return sb.ToString();
         }
 
@@ -88,7 +129,7 @@ namespace McpUnity.Utils
         /// Uses a portable wrapper script path instead of an absolute path to the server,
         /// making the config safe to commit to version control.
         /// </summary>
-        public static string GenerateOpenCodeConfigJson(bool useTabsIndentation)
+        public static string GenerateOpenCodeConfigJson()
         {
             var config = new JObject
             {
@@ -103,43 +144,22 @@ namespace McpUnity.Utils
                 }
             };
 
-            var stringWriter = new StringWriter();
-            using (var jsonWriter = new JsonTextWriter(stringWriter))
-            {
-                jsonWriter.Formatting = Formatting.Indented;
-
-                if (useTabsIndentation)
-                {
-                    jsonWriter.IndentChar = '\t';
-                    jsonWriter.Indentation = 1;
-                }
-                else
-                {
-                    jsonWriter.IndentChar = ' ';
-                    jsonWriter.Indentation = 2;
-                }
-
-                // Serialize directly to the JsonTextWriter
-                var serializer = new JsonSerializer();
-                serializer.Serialize(jsonWriter, config);
-            }
-
-            return stringWriter.ToString();
+            return config.ToString(Formatting.Indented);
         }
 
         /// <summary>
         /// Generates the wrapper script content that dynamically resolves the mcp-unity package
-        /// at runtime. This eliminates machine-specific paths from the OpenCode config,
-        /// making opencode.json safe to commit to version control.
+        /// at runtime. This eliminates machine-specific paths from config files,
+        /// making them safe to commit to version control.
         /// The script checks Library/PackageCache (git/registry packages) and Packages/ (local/embedded).
         /// </summary>
-        public static string GenerateOpenCodeWrapperScript()
+        public static string GenerateWrapperScript()
         {
             string packageName = McpUnitySettings.PackageName;
 
             return $@"#!/usr/bin/env node
 // Auto-generated by MCP Unity — resolves the mcp-unity server at runtime.
-// This avoids machine-specific absolute paths in opencode.json.
+// This avoids machine-specific absolute paths in MCP config files.
 import {{ readdirSync, existsSync }} from ""fs"";
 import {{ join, resolve }} from ""path"";
 import {{ pathToFileURL }} from ""url"";
@@ -270,62 +290,70 @@ await import(pathToFileURL(resolve(server)).href);
         /// <summary>
         /// Adds the MCP configuration to the Windsurf MCP config file
         /// </summary>
-        public static bool AddToWindsurfIdeConfig(bool useTabsIndentation)
+        public static bool AddToWindsurfIdeConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetWindsurfMcpConfigPath();
-            return AddToConfigFile(configFilePath, useTabsIndentation, "Windsurf");
+            return AddToConfigFile(configFilePath, "Windsurf");
         }
         
         /// <summary>
         /// Adds the MCP configuration to the Claude Desktop config file
         /// </summary>
-        public static bool AddToClaudeDesktopConfig(bool useTabsIndentation)
+        public static bool AddToClaudeDesktopConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetClaudeDesktopConfigPath();
-            return AddToConfigFile(configFilePath, useTabsIndentation, "Claude Desktop");
+            return AddToConfigFile(configFilePath, "Claude Desktop");
         }
         
         /// <summary>
         /// Adds the MCP configuration to the Cursor config file
         /// </summary>
-        public static bool AddToCursorConfig(bool useTabsIndentation)
+        public static bool AddToCursorConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetCursorConfigPath();
-            return AddToConfigFile(configFilePath, useTabsIndentation, "Cursor");
+            return AddToConfigFile(configFilePath, "Cursor");
         }
         
         /// <summary>
         /// Adds the MCP configuration to the Claude Code config file
         /// </summary>
-        public static bool AddToClaudeCodeConfig(bool useTabsIndentation)
+        public static bool AddToClaudeCodeConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetClaudeCodeConfigPath();
-            return AddToConfigFile(configFilePath, useTabsIndentation, "Claude Code");
+            return AddToConfigFile(configFilePath, "Claude Code");
         }
 
         /// <summary>
         /// Adds the MCP configuration to the Google Antigravity config file
         /// </summary>
-        public static bool AddToAntigravityConfig(bool useTabsIndentation)
+        public static bool AddToAntigravityConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetAntigravityConfigPath();
-            return AddToConfigFile(configFilePath, useTabsIndentation, "Google Antigravity");
+            return AddToConfigFile(configFilePath, "Google Antigravity");
         }
 
         /// <summary>
-        /// Adds the MCP configuration to the GitHub Copilot config file
+        /// Adds the MCP configuration to the GitHub Copilot config file.
+        /// GitHub Copilot config is project-scoped (.vscode/mcp.json), so uses a relative path to the wrapper.
         /// </summary>
-        public static bool AddToGitHubCopilotConfig(bool useTabsIndentation)
+        public static bool AddToGitHubCopilotConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetGitHubCopilotConfigPath();
-            return AddToConfigFile(configFilePath, useTabsIndentation, "GitHub Copilot");
+            return AddToProjectScopedConfigFile(configFilePath, "../mcp-unity-server.mjs", "GitHub Copilot");
         }
 
         /// <summary>
         /// Adds the MCP configuration to the Codex CLI config file (TOML format)
         /// </summary>
-        public static bool AddToCodexCliConfig(bool useTabsIndentation)
+        public static bool AddToCodexCliConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetCodexCliConfigPath();
             return AddToTomlConfigFile(configFilePath, "Codex CLI");
         }
@@ -335,20 +363,21 @@ await import(pathToFileURL(resolve(server)).href);
         /// OpenCode uses a different JSON schema from other clients, with "mcp" instead of "mcpServers".
         /// Also writes the portable wrapper script (mcp-unity-server.mjs) that the config references.
         /// </summary>
-        public static bool AddToOpenCodeConfig(bool useTabsIndentation)
+        public static bool AddToOpenCodeConfig()
         {
+            if (!WriteWrapperScriptToProjectRoot()) return false;
             string configFilePath = GetOpenCodeConfigPath();
-            return AddToOpenCodeConfigFile(configFilePath, useTabsIndentation, "OpenCode");
+            return AddToOpenCodeConfigFile(configFilePath, "OpenCode");
         }
 
         /// <summary>
-        /// Common method to add MCP configuration to a specified config file
+        /// Common method to add MCP configuration to a specified config file (global/user-scoped).
+        /// Uses absolute path to the wrapper script in the project root.
         /// </summary>
         /// <param name="configFilePath">Path to the config file</param>
-        /// <param name="useTabsIndentation">Whether to use tabs for indentation</param>
         /// <param name="productName">Name of the product (for error messages)</param>
-        /// <returns>True if successfuly added the config, false otherwise</returns>
-        private static bool AddToConfigFile(string configFilePath, bool useTabsIndentation, string productName)
+        /// <returns>True if successfully added the config, false otherwise</returns>
+        private static bool AddToConfigFile(string configFilePath, string productName)
         {
             if (string.IsNullOrEmpty(configFilePath))
             {
@@ -356,8 +385,8 @@ await import(pathToFileURL(resolve(server)).href);
                 return false;
             }
                 
-            // Generate fresh MCP config JSON
-            string mcpConfigJson = GenerateMcpConfigJson(useTabsIndentation);
+            // Generate fresh MCP config JSON with wrapper script path
+            string mcpConfigJson = GenerateMcpConfigJson();
             
             try
             {
@@ -387,7 +416,54 @@ await import(pathToFileURL(resolve(server)).href);
 
             return false;
         }
-        
+
+        /// <summary>
+        /// Adds MCP configuration to a project-scoped config file using a relative wrapper path.
+        /// </summary>
+        /// <param name="configFilePath">Path to the config file</param>
+        /// <param name="relativeWrapperPath">Relative path from config to wrapper script</param>
+        /// <param name="productName">Name of the product (for error messages)</param>
+        /// <returns>True if successfully added the config, false otherwise</returns>
+        private static bool AddToProjectScopedConfigFile(string configFilePath, string relativeWrapperPath, string productName)
+        {
+            if (string.IsNullOrEmpty(configFilePath))
+            {
+                Debug.LogError($"{productName} config file not found.");
+                return false;
+            }
+
+            string mcpConfigJson = GenerateProjectScopedMcpConfigJson(relativeWrapperPath);
+
+            try
+            {
+                JObject mcpConfig = JObject.Parse(mcpConfigJson);
+                string directoryPath = Path.GetDirectoryName(configFilePath);
+
+                if (File.Exists(configFilePath))
+                {
+                    return TryMergeMcpServers(configFilePath, mcpConfig, productName);
+                }
+                else if (Directory.Exists(directoryPath))
+                {
+                    File.WriteAllText(configFilePath, mcpConfigJson);
+                    return true;
+                }
+                else
+                {
+                    // Create directory (e.g., .vscode/) and write file
+                    Directory.CreateDirectory(directoryPath);
+                    File.WriteAllText(configFilePath, mcpConfigJson);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to add MCP configuration to {productName}: {ex}");
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Gets the path to the Windsurf MCP config file based on the current OS
         /// </summary>
@@ -855,9 +931,8 @@ await import(pathToFileURL(resolve(server)).href);
         /// <summary>
         /// Adds MCP configuration to an OpenCode config file.
         /// OpenCode uses a different JSON schema: "mcp" key instead of "mcpServers", and "command" as an array.
-        /// Also writes the portable wrapper script (mcp-unity-server.mjs) that the config references.
         /// </summary>
-        private static bool AddToOpenCodeConfigFile(string configFilePath, bool useTabsIndentation, string productName)
+        private static bool AddToOpenCodeConfigFile(string configFilePath, string productName)
         {
             if (string.IsNullOrEmpty(configFilePath))
             {
@@ -867,13 +942,7 @@ await import(pathToFileURL(resolve(server)).href);
 
             try
             {
-                // Write the wrapper script alongside the config file
-                string projectRoot = Path.GetDirectoryName(configFilePath);
-                string wrapperPath = Path.Combine(projectRoot, "mcp-unity-server.mjs");
-                string wrapperContent = GenerateOpenCodeWrapperScript();
-                File.WriteAllText(wrapperPath, wrapperContent);
-
-                string openCodeJson = GenerateOpenCodeConfigJson(useTabsIndentation);
+                string openCodeJson = GenerateOpenCodeConfigJson();
 
                 if (File.Exists(configFilePath))
                 {
