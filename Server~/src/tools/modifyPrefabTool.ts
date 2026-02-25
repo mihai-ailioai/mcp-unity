@@ -19,6 +19,25 @@ Example variant: modify_prefab({assetPath: "Assets/Prefabs/Enemy.prefab", varian
   {tool: "update_component", params: {objectPath: "EnemyBoss", componentType: "EnemyController", componentData: {health: 500}}}
 ]})`;
 
+// Read-only tools whose result data should be included in the response.
+// Mutation tool results are omitted to keep response sizes manageable.
+const readOnlyTools = new Set([
+  "get_gameobject",
+  "find_gameobjects",
+  "get_material_info",
+  "get_scene_info",
+  "get_console_logs",
+  "get_prefab_info",
+  "get_scriptable_object",
+  "get_import_settings",
+  "get_selection",
+  "get_hierarchy",
+  "get_menu_items",
+  "get_editor_state",
+  "get_animator_info",
+  "select_gameobject",
+]);
+
 const operationSchema = z.object({
   tool: z
     .string()
@@ -246,12 +265,31 @@ async function toolHandler(
     throw new McpUnityError(ErrorType.TOOL_EXECUTION, resultText);
   }
 
-  return {
-    content: [
-      {
-        type: "text",
-        text: resultText,
-      },
-    ],
-  };
+  // Build content blocks: always include the text summary
+  const content: CallToolResult["content"] = [
+    {
+      type: "text",
+      text: resultText,
+    },
+  ];
+
+  // Append result data for read-only operations
+  if (response.results && operations) {
+    for (let i = 0; i < response.results.length; i++) {
+      const opResult = response.results[i];
+      const op = operations[i];
+      if (opResult.success && opResult.result && op && readOnlyTools.has(op.tool)) {
+        content.push({
+          type: "text",
+          text: JSON.stringify(
+            { operationId: opResult.id, tool: op.tool, result: opResult.result },
+            null,
+            2
+          ),
+        });
+      }
+    }
+  }
+
+  return { content };
 }
