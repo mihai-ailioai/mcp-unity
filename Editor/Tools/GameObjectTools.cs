@@ -71,30 +71,42 @@ namespace McpUnity.Tools
 
             if (parts.Length == 0) return null;
 
-            // Find root object
-            GameObject current = null;
-            GameObject[] rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
-
-            foreach (var root in rootObjects)
+            // Search all loaded scenes, not just the active one
+            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            for (int s = 0; s < sceneCount; s++)
             {
-                if (root.name == parts[0])
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
+                if (!scene.isLoaded) continue;
+
+                GameObject[] rootObjects = scene.GetRootGameObjects();
+
+                foreach (var root in rootObjects)
                 {
-                    current = root;
-                    break;
+                    if (root.name == parts[0])
+                    {
+                        GameObject current = root;
+                        bool found = true;
+
+                        for (int i = 1; i < parts.Length; i++)
+                        {
+                            Transform child = current.transform.Find(parts[i]);
+                            if (child == null)
+                            {
+                                found = false;
+                                break;
+                            }
+                            current = child.gameObject;
+                        }
+
+                        if (found)
+                        {
+                            return current;
+                        }
+                    }
                 }
             }
 
-            if (current == null) return null;
-
-            // Traverse children
-            for (int i = 1; i < parts.Length; i++)
-            {
-                Transform child = current.transform.Find(parts[i]);
-                if (child == null) return null;
-                current = child.gameObject;
-            }
-
-            return current;
+            return null;
         }
 
         /// <summary>

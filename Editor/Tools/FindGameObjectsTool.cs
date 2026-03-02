@@ -131,8 +131,16 @@ namespace McpUnity.Tools
                 }
             }
 
-            Scene activeScene = SceneManager.GetActiveScene();
-            roots.AddRange(activeScene.GetRootGameObjects());
+            // Search all loaded scenes, not just the active one
+            int sceneCount = SceneManager.sceneCount;
+            for (int i = 0; i < sceneCount; i++)
+            {
+                Scene scene = SceneManager.GetSceneAt(i);
+                if (scene.isLoaded)
+                {
+                    roots.AddRange(scene.GetRootGameObjects());
+                }
+            }
             return roots;
         }
 

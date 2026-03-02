@@ -72,31 +72,48 @@ namespace McpUnity.Tools
         public static GameObject FindGameObjectByPath(string path)
         {
             string[] pathParts = path.Split('/');
-            GameObject[] rootGameObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
 
             if (pathParts.Length == 0)
             {
                 return null;
             }
 
-            foreach (GameObject rootObj in rootGameObjects)
+            // Search all loaded scenes, not just the active one
+            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            for (int s = 0; s < sceneCount; s++)
             {
-                if (rootObj.name == pathParts[0])
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
+                if (!scene.isLoaded)
                 {
-                    GameObject current = rootObj;
+                    continue;
+                }
 
-                    for (int i = 1; i < pathParts.Length; i++)
+                GameObject[] rootGameObjects = scene.GetRootGameObjects();
+
+                foreach (GameObject rootObj in rootGameObjects)
+                {
+                    if (rootObj.name == pathParts[0])
                     {
-                        Transform child = current.transform.Find(pathParts[i]);
-                        if (child == null)
+                        GameObject current = rootObj;
+                        bool found = true;
+
+                        for (int i = 1; i < pathParts.Length; i++)
                         {
-                            return null;
+                            Transform child = current.transform.Find(pathParts[i]);
+                            if (child == null)
+                            {
+                                found = false;
+                                break;
+                            }
+
+                            current = child.gameObject;
                         }
 
-                        current = child.gameObject;
+                        if (found)
+                        {
+                            return current;
+                        }
                     }
-
-                    return current;
                 }
             }
 
