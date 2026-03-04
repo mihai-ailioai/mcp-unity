@@ -9,7 +9,9 @@ const toolName = "get_prefab_info";
 const toolDescription =
   "Get detailed information about a prefab asset by asset path, without entering Prefab Mode or instantiating in scene. " +
   "Returns hierarchy, components, and prefab metadata (variant status, base prefab path). " +
-  "Use summary=true for a lightweight overview (names, instanceIds, component type names only).";
+  "Use summary=true for a lightweight overview (names, instanceIds, component type names only). " +
+  "For large prefabs, use 'rootPath' to inspect a specific subtree, or 'namePattern'/'componentType' to " +
+  "search for matching GameObjects (returns a flat list of matches with full component data instead of the full hierarchy).";
 
 const paramsSchema = z.object({
   assetPath: z
@@ -22,6 +24,26 @@ const paramsSchema = z.object({
     .optional()
     .describe(
       "When true, returns a lightweight response with only names, instanceIds, and component type names (no property details). Useful for scanning large prefab hierarchies."
+    ),
+  rootPath: z
+    .string()
+    .optional()
+    .describe(
+      "Path within the prefab hierarchy to use as the starting point (e.g., 'CarBody/Exterior'). Only the subtree at this path is included in the response."
+    ),
+  namePattern: z
+    .string()
+    .optional()
+    .describe(
+      "Filter GameObjects by name using wildcard patterns (e.g., '*Livery*', 'Wheel*'). " +
+      "When set, returns a flat list of matching GameObjects instead of the full hierarchy tree. Case-insensitive."
+    ),
+  componentType: z
+    .string()
+    .optional()
+    .describe(
+      "Filter GameObjects that have this component type (e.g., 'MeshRenderer', 'BoxCollider'). " +
+      "When set, returns a flat list of matching GameObjects instead of the full hierarchy tree."
     ),
 });
 
@@ -57,7 +79,7 @@ async function toolHandler(
   mcpUnity: McpUnity,
   params: z.infer<typeof paramsSchema>
 ): Promise<CallToolResult> {
-  const { assetPath, summary } = params;
+  const { assetPath, summary, rootPath, namePattern, componentType } = params;
 
   // Validate assetPath
   if (!assetPath || assetPath.trim().length === 0) {
@@ -81,12 +103,18 @@ async function toolHandler(
     );
   }
 
+  const requestParams: Record<string, any> = {
+    assetPath: assetPath,
+    summary: summary ?? false,
+  };
+
+  if (rootPath) requestParams.rootPath = rootPath;
+  if (namePattern) requestParams.namePattern = namePattern;
+  if (componentType) requestParams.componentType = componentType;
+
   const response = await mcpUnity.sendRequest({
     method: toolName,
-    params: {
-      assetPath: assetPath,
-      summary: summary ?? false,
-    },
+    params: requestParams,
   });
 
   if (!response.success) {

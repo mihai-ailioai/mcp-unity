@@ -123,6 +123,55 @@ namespace McpUnity.Tools
             }
             return path;
         }
+
+        /// <summary>
+        /// Matches a name against a simple wildcard pattern (case-insensitive).
+        /// Supports *, e.g. "*Livery*", "Car*", "*Wheel".
+        /// Without wildcards, performs a contains match.
+        /// </summary>
+        public static bool MatchesNamePattern(string name, string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                return true;
+
+            string source = name.ToLowerInvariant();
+            string query = pattern.ToLowerInvariant();
+
+            if (!query.Contains("*"))
+                return source.Contains(query);
+
+            if (query == "*")
+                return true;
+
+            bool startsWithWildcard = query.StartsWith("*");
+            bool endsWithWildcard = query.EndsWith("*");
+            string trimmed = query.Trim('*');
+
+            if (startsWithWildcard && endsWithWildcard)
+                return source.Contains(trimmed);
+
+            if (startsWithWildcard)
+                return source.EndsWith(trimmed);
+
+            if (endsWithWildcard)
+                return source.StartsWith(trimmed);
+
+            // Multi-segment wildcard: "a*b*c"
+            string[] parts = query.Split(new[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return true;
+
+            int index = 0;
+            foreach (string part in parts)
+            {
+                int foundIndex = source.IndexOf(part, index, StringComparison.Ordinal);
+                if (foundIndex < 0)
+                    return false;
+                index = foundIndex + part.Length;
+            }
+
+            return true;
+        }
     }
 
     /// <summary>

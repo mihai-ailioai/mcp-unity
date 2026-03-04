@@ -121,6 +121,13 @@ namespace McpUnity.Tools
                 return roots;
             }
 
+            // Headless prefab context (modify_prefab) takes highest priority
+            if (PrefabStageUtils.IsInHeadlessPrefabContext())
+            {
+                roots.Add(PrefabStageUtils.HeadlessPrefabRoot);
+                return roots;
+            }
+
             if (PrefabStageUtils.IsInPrefabStage())
             {
                 GameObject prefabRoot = PrefabStageUtils.GetCurrentPrefabStage()?.prefabContentsRoot;
@@ -195,7 +202,7 @@ namespace McpUnity.Tools
                 return false;
             }
 
-            if (!string.IsNullOrEmpty(namePattern) && !MatchesNamePattern(gameObject.name, namePattern))
+            if (!string.IsNullOrEmpty(namePattern) && !GameObjectToolUtils.MatchesNamePattern(gameObject.name, namePattern))
             {
                 return false;
             }
@@ -213,65 +220,7 @@ namespace McpUnity.Tools
             return true;
         }
 
-        private static bool MatchesNamePattern(string name, string pattern)
-        {
-            if (string.IsNullOrEmpty(pattern))
-            {
-                return true;
-            }
-
-            string source = name.ToLowerInvariant();
-            string query = pattern.ToLowerInvariant();
-
-            if (!query.Contains("*"))
-            {
-                return source.Contains(query);
-            }
-
-            if (query == "*")
-            {
-                return true;
-            }
-
-            bool startsWithWildcard = query.StartsWith("*");
-            bool endsWithWildcard = query.EndsWith("*");
-            string trimmed = query.Trim('*');
-
-            if (startsWithWildcard && endsWithWildcard)
-            {
-                return source.Contains(trimmed);
-            }
-
-            if (startsWithWildcard)
-            {
-                return source.EndsWith(trimmed);
-            }
-
-            if (endsWithWildcard)
-            {
-                return source.StartsWith(trimmed);
-            }
-
-            string[] parts = query.Split(new[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0)
-            {
-                return true;
-            }
-
-            int index = 0;
-            foreach (string part in parts)
-            {
-                int foundIndex = source.IndexOf(part, index, StringComparison.Ordinal);
-                if (foundIndex < 0)
-                {
-                    return false;
-                }
-
-                index = foundIndex + part.Length;
-            }
-
-            return true;
-        }
+        // Name pattern matching is now in GameObjectToolUtils.MatchesNamePattern()
 
         private static JObject BuildMatchObject(GameObject gameObject)
         {

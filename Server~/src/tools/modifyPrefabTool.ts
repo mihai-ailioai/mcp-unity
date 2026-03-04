@@ -193,7 +193,7 @@ async function toolHandler(
   const blockedTools = new Set([
     "batch_execute", "modify_prefab",
     "create_scene", "load_scene", "save_scene", "delete_scene", "unload_scene",
-    "add_asset_to_scene", "add_package", "run_tests", "recompile_scripts",
+    "add_package", "run_tests", "recompile_scripts",
     "execute_menu_item", "save_as_prefab", "create_prefab",
     "move_asset", "rename_asset", "copy_asset", "delete_asset",
   ]);

@@ -34,7 +34,6 @@ namespace McpUnity.Tools
             "save_scene",
             "delete_scene",
             "unload_scene",
-            "add_asset_to_scene",
             "add_package",
             "run_tests",
             "recompile_scripts",
@@ -60,9 +59,10 @@ namespace McpUnity.Tools
                           "When creating a variant, 'operations' is optional (variant is created even with no operations). " +
                           "Allowed sub-tools: update_component, remove_component, update_gameobject, duplicate_gameobject, " +
                           "delete_gameobject, reparent_gameobject, create_primitive, set_rect_transform, get_gameobject, " +
-                          "select_gameobject, create_material, assign_material, modify_material, get_material_info, " +
-                          "create_tag, send_console_log, get_console_logs, create_scriptable_object, get_scriptable_object, " +
-                          "update_scriptable_object, get_import_settings, update_import_settings, get_scene_info, get_prefab_info.";
+                          "find_gameobjects, select_gameobject, add_asset_to_scene, create_material, assign_material, " +
+                          "modify_material, get_material_info, create_tag, send_console_log, get_console_logs, " +
+                          "create_scriptable_object, get_scriptable_object, update_scriptable_object, get_import_settings, " +
+                          "update_import_settings, get_scene_info, get_prefab_info.";
             IsAsync = true;
         }
 

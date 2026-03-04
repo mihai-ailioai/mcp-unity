@@ -85,18 +85,27 @@ namespace McpUnity.Tools
             
             // Instantiate the asset
             GameObject instance = null;
+            bool isHeadlessPrefabContext = PrefabStageUtils.IsInHeadlessPrefabContext();
             try
             {
-                instance = (GameObject)PrefabUtility.InstantiatePrefab(asset);
+                if (isHeadlessPrefabContext)
+                {
+                    // Inside modify_prefab headless context: instantiate into the prefab's isolated scene
+                    var headlessRoot = PrefabStageUtils.HeadlessPrefabRoot;
+                    instance = (GameObject)PrefabUtility.InstantiatePrefab(asset, headlessRoot.scene);
+                }
+                else
+                {
+                    instance = (GameObject)PrefabUtility.InstantiatePrefab(asset);
+                }
                 
                 // Set position
                 instance.transform.position = position;
                 
-                // Set parent if specified
+                // Set parent if specified, or default to headless root when in prefab context
+                GameObject parent = null;
                 if (!string.IsNullOrEmpty(parentPath) || parentId.HasValue)
                 {
-                    GameObject parent = null;
-                    
                     // Try to find parent by ID first
                     if (parentId.HasValue)
                     {
@@ -114,13 +123,22 @@ namespace McpUnity.Tools
                     }
                     else
                     {
-                        McpLogger.LogWarning($"Parent object not found, asset will be created at the root of the scene");
+                        McpLogger.LogWarning($"Parent object not found, asset will be created at the root of the {(isHeadlessPrefabContext ? "prefab" : "scene")}");
                     }
                 }
+                else if (isHeadlessPrefabContext)
+                {
+                    // No parent specified in headless context: parent to headless root
+                    // so the instantiated object becomes part of the prefab hierarchy
+                    instance.transform.SetParent(PrefabStageUtils.HeadlessPrefabRoot.transform, false);
+                }
                 
-                // Select the newly created object
-                Selection.activeGameObject = instance;
-                EditorGUIUtility.PingObject(instance);
+                // Only select/ping when not in headless context (no active editor selection)
+                if (!isHeadlessPrefabContext)
+                {
+                    Selection.activeGameObject = instance;
+                    EditorGUIUtility.PingObject(instance);
+                }
             }
             catch (Exception ex)
             {
