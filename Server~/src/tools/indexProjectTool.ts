@@ -11,10 +11,7 @@ import { Logger } from '../utils/logger.js';
 const toolName = 'index_project';
 const toolDescription = 'Collects project assets from Unity and indexes them into the local project context engine.';
 
-const paramsSchema = z.object({
-  includeScenes: z.boolean().optional().default(false).describe('When true, include scene assets in the collected documents.'),
-  folders: z.array(z.string()).optional().default([]).describe('Optional Unity asset folders to limit indexing scope.'),
-});
+const paramsSchema = z.object({});
 
 type CollectProjectAssetsResponse = {
   success: boolean;
@@ -59,9 +56,9 @@ async function toolHandler(
     throw new McpUnityError(ErrorType.INTERNAL, 'Context engine is not initialized');
   }
 
-  const { includeScenes, folders } = parsed.data;
+  // Folders and includeScenes are configured in the Unity editor Context Engine tab
   const response = (await mcpUnity.sendRequest(
-    { method: 'collect_project_assets', params: { includeScenes, folders } },
+    { method: 'collect_project_assets', params: {} },
     { timeout: 300000 }
   )) as CollectProjectAssetsResponse;
 

@@ -52,14 +52,10 @@ namespace McpUnity.Tools
 
         private static IEnumerator ExecuteCollectCoroutine(JObject parameters, TaskCompletionSource<JObject> tcs)
         {
-            // Use editor settings as defaults when params are not provided
+            // Always use editor settings — folders and scene inclusion are configured in the Context Engine tab
             var settings = McpUnitySettings.Instance;
-            bool includeScenes = parameters?["includeScenes"]?.ToObject<bool?>() ?? settings.ContextEngineIndexScenes;
-            List<string> folders = ParseFolders(parameters?["folders"] as JArray);
-            if (folders.Count == 0 && settings.ContextEngineIndexFolders.Count > 0)
-            {
-                folders = new List<string>(settings.ContextEngineIndexFolders);
-            }
+            bool includeScenes = settings.ContextEngineIndexScenes;
+            List<string> folders = new List<string>(settings.ContextEngineIndexFolders);
 
             yield return null;
 
