@@ -9,7 +9,15 @@ import { McpUnityError, ErrorType } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
 
 const toolName = 'index_project';
-const toolDescription = 'Indexes project assets into the context engine for semantic search. Supports automatic resume if a previous run was interrupted.';
+const toolDescription = 'Indexes project assets into the context engine for semantic search. Supports automatic resume — if the operation is too large to complete in one call, it will return a message asking you to call this tool again to continue.';
+
+/**
+ * Internal time budget for a single tool invocation. We leave a 30-second
+ * safety margin before the MCP client timeout (typically 600s) so we can
+ * save the checkpoint and return a "call again" message rather than letting
+ * the transport kill us mid-flight.
+ */
+const TOOL_TIME_BUDGET_MS = 540_000; // 9 minutes
 
 const paramsSchema = z.object({});
 
@@ -135,6 +143,14 @@ async function toolHandler(
     throw new McpUnityError(ErrorType.INTERNAL, 'Context engine is not initialized');
   }
 
+  const startTime = Date.now();
+  const deadline = startTime + TOOL_TIME_BUDGET_MS;
+
+  /** Returns true when we should stop and ask the LLM to call again. */
+  function isNearDeadline(): boolean {
+    return Date.now() >= deadline;
+  }
+
   // ── Try to resume from checkpoint ─────────────────────────────────
   let checkpoint = loadCheckpoint(logger);
   const isResume = checkpoint !== null && checkpoint.collectedUnityDocuments < checkpoint.totalUnityDocuments;
@@ -235,10 +251,36 @@ async function toolHandler(
       await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
       return { content: [{ type: 'text', text: summary }] };
     }
+
+    // Check deadline after first page
+    if (isNearDeadline()) {
+      logger.info('Approaching time limit after first page, saving checkpoint for resume');
+      const pct = Math.round((unityOffset / totalUnityDocuments) * 100);
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      return {
+        content: [{
+          type: 'text',
+          text: `Indexing in progress: ${unityOffset}/${totalUnityDocuments} prefabs/scenes collected (${pct}%), ${scriptDocuments.length} scripts indexed. Elapsed: ${elapsed}s. Please call index_project again to continue from the checkpoint.`,
+        }],
+      };
+    }
   }
 
   // ── Phase 2: Paginate remaining Unity documents ───────────────────
   while (unityOffset < totalUnityDocuments) {
+    // Check deadline before starting the next page
+    if (isNearDeadline()) {
+      logger.info('Approaching time limit, saving checkpoint for resume');
+      const pct = Math.round((unityOffset / totalUnityDocuments) * 100);
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      return {
+        content: [{
+          type: 'text',
+          text: `Indexing in progress: ${unityOffset}/${totalUnityDocuments} prefabs/scenes collected (${pct}%), ${totalUnityDocsIndexed} indexed so far, ${scriptDocuments.length} scripts indexed. Elapsed: ${elapsed}s. Please call index_project again to continue from the checkpoint.`,
+        }],
+      };
+    }
+
     const pageMsg = `Collecting Unity assets (${unityOffset}/${totalUnityDocuments})...`;
     logger.info(pageMsg);
     await sendProgress(extra, unityOffset, totalUnityDocuments, pageMsg, logger);
