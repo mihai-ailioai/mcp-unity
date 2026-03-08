@@ -61,6 +61,14 @@ namespace McpUnity.Tools
 
         private static IEnumerator ExecuteCollectCoroutine(JObject parameters, TaskCompletionSource<JObject> tcs)
         {
+            // Check for incremental mode: specific asset paths to process
+            var assetPathsToken = parameters["assetPaths"];
+            if (assetPathsToken is JArray assetPathsArray && assetPathsArray.Count > 0)
+            {
+                yield return ExecuteCollectSpecificAssets(assetPathsArray, tcs);
+                yield break;
+            }
+
             // Pagination: offset determines which prefab/scene index to start from.
             // Documents are accumulated until adding the next one would exceed MaxPayloadBytes.
             int offset = parameters["offset"]?.ToObject<int>() ?? 0;
@@ -221,6 +229,70 @@ namespace McpUnity.Tools
                 McpLogger.LogError($"[Context Engine] Failed to collect project assets: {ex.Message}");
                 tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
                     $"Failed to collect project assets: {ex.Message}",
+                    "execution_error"
+                ));
+            }
+        }
+
+        // ── Incremental mode: process only specific asset paths ──
+
+        private static IEnumerator ExecuteCollectSpecificAssets(JArray assetPathsArray, TaskCompletionSource<JObject> tcs)
+        {
+            var settings = McpUnitySettings.Instance;
+            bool includePrefabs = settings.ContextEngineIndexPrefabs;
+            bool includeScenes = settings.ContextEngineIndexScenes;
+
+            yield return null;
+
+            try
+            {
+                var documents = new List<CollectedDocument>();
+
+                for (int i = 0; i < assetPathsArray.Count; i++)
+                {
+                    string assetPath = assetPathsArray[i]?.ToString();
+                    if (string.IsNullOrEmpty(assetPath))
+                        continue;
+
+                    try
+                    {
+                        if (assetPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!includePrefabs) continue;
+                            var doc = ProcessPrefab(assetPath);
+                            if (doc != null) documents.Add(doc);
+                        }
+                        else if (assetPath.EndsWith(".unity", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!includeScenes) continue;
+                            var doc = ProcessScene(assetPath);
+                            if (doc != null) documents.Add(doc);
+                        }
+                        // Scripts and other file types are handled Node-side (read from disk)
+                    }
+                    catch (Exception ex)
+                    {
+                        McpLogger.LogError($"[Context Engine] Failed to process {assetPath}: {ex.Message}");
+                    }
+                }
+
+                var responseDocuments = new JArray();
+                foreach (var doc in documents)
+                {
+                    responseDocuments.Add(doc.ToResponseJObject());
+                }
+
+                tcs.SetResult(new JObject
+                {
+                    ["success"] = true,
+                    ["documents"] = responseDocuments,
+                });
+            }
+            catch (Exception ex)
+            {
+                McpLogger.LogError($"[Context Engine] Failed to collect specific assets: {ex.Message}");
+                tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
+                    $"Failed to collect specific assets: {ex.Message}",
                     "execution_error"
                 ));
             }

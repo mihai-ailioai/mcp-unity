@@ -9,7 +9,7 @@ import { McpUnityError, ErrorType } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
 
 const toolName = 'index_project';
-const toolDescription = 'Indexes project assets into the context engine for semantic search. Supports automatic resume — if the operation is too large to complete in one call, it will return a message asking you to call this tool again to continue.';
+const toolDescription = 'Indexes project assets into the context engine for semantic search. When called with no arguments, performs a full re-index (clears existing index). When called with a `paths` array, incrementally updates only those specific files without clearing the index — use this after modifying files to keep the index up to date.';
 
 /**
  * Internal time budget for a single tool invocation. When approaching this
@@ -22,7 +22,13 @@ const toolDescription = 'Indexes project assets into the context engine for sema
  */
 const TOOL_TIME_BUDGET_MS = 45_000; // 45 seconds
 
-const paramsSchema = z.object({});
+const paramsSchema = z.object({
+  paths: z.array(z.string()).optional().describe(
+    'Optional list of asset paths to incrementally re-index (e.g. ["Assets/Scripts/Player.cs", "Assets/Prefabs/Player.prefab"]). ' +
+    'When provided, only these files are updated in the index without clearing existing entries. ' +
+    'When omitted, a full project re-index is performed.'
+  ),
+});
 
 type CollectProjectAssetsResponse = {
   success: boolean;
@@ -223,7 +229,112 @@ function earlyReturn(
   return { content: [{ type: 'text', text: lines.join('\n') }] };
 }
 
-// ── Core handler ────────────────────────────────────────────────────────
+// ── Incremental indexing handler ────────────────────────────────────────
+
+type CollectSpecificAssetsResponse = {
+  success: boolean;
+  documents?: Array<{ path: string; contents: string }>;
+  message?: string;
+};
+
+async function incrementalIndexHandler(
+  mcpUnity: McpUnity,
+  contextEngine: ContextEngineService,
+  filePaths: string[],
+  extra: any,
+  logger: Logger
+): Promise<CallToolResult> {
+  const unityProjectRoot = process.cwd();
+
+  // Split paths by type
+  const scriptPaths: string[] = [];
+  const prefabScenePaths: string[] = [];
+
+  for (const p of filePaths) {
+    if (p.endsWith('.cs')) {
+      scriptPaths.push(p);
+    } else if (p.endsWith('.prefab') || p.endsWith('.unity')) {
+      prefabScenePaths.push(p);
+    } else {
+      // Unknown type — try to read from disk as a generic text file
+      scriptPaths.push(p);
+    }
+  }
+
+  const docs: Array<{ path: string; contents: string }> = [];
+  let readErrors = 0;
+
+  // Read scripts from disk (no Unity call needed)
+  if (scriptPaths.length > 0) {
+    // We need the package path map for resolving Packages/ paths.
+    // Try to load it from checkpoint if available, otherwise use empty map.
+    const checkpoint = loadCheckpoint(logger);
+    const packagePathMap = checkpoint?.packagePathMap ?? {};
+
+    for (const scriptPath of scriptPaths) {
+      try {
+        const diskRelative = resolveDiskPath(scriptPath, packagePathMap);
+        const fullPath = path.resolve(unityProjectRoot, diskRelative);
+        const fileContents = fs.readFileSync(fullPath, 'utf-8');
+        if (fileContents.trim().length > 0) {
+          docs.push({
+            path: scriptPath,
+            contents: `// File: ${scriptPath}\n${fileContents}`,
+          });
+        }
+      } catch (err: any) {
+        readErrors++;
+        logger.error(`Failed to read ${scriptPath}: ${err.message}`);
+      }
+    }
+  }
+
+  // Process prefabs/scenes via Unity (respects editor toggles)
+  if (prefabScenePaths.length > 0) {
+    try {
+      const response = (await mcpUnity.sendRequest(
+        { method: 'collect_project_assets', params: { assetPaths: prefabScenePaths } },
+        { timeout: 120000 }
+      )) as CollectSpecificAssetsResponse;
+
+      if (response.success && response.documents) {
+        docs.push(...response.documents);
+      }
+    } catch (err: any) {
+      logger.error(`Failed to collect prefab/scene assets from Unity: ${err.message}`);
+    }
+  }
+
+  if (docs.length === 0) {
+    const msg = readErrors > 0
+      ? `No documents could be indexed. ${readErrors} files failed to read.`
+      : 'No indexable documents found in the provided paths.';
+    return { content: [{ type: 'text', text: msg }] };
+  }
+
+  // Index without clearing — incremental update
+  const batchStats = await contextEngine.indexBatch(docs, true);
+  const indexedPaths = contextEngine.getIndexedPaths();
+
+  const parts: string[] = [];
+  parts.push(`Incrementally indexed ${docs.length} file(s)`);
+
+  const details: string[] = [];
+  if (batchStats.newlyUploaded > 0) details.push(`${batchStats.newlyUploaded} updated`);
+  if (batchStats.alreadyUploaded > 0) details.push(`${batchStats.alreadyUploaded} unchanged`);
+  if (batchStats.skipped > 0) details.push(`${batchStats.skipped} skipped (oversized)`);
+  if (details.length > 0) parts.push(` (${details.join(', ')})`);
+
+  parts.push(`. Context engine now tracks ${indexedPaths.length} paths.`);
+
+  if (readErrors > 0) {
+    parts.push(` Warning: ${readErrors} file(s) could not be read from disk.`);
+  }
+
+  return { content: [{ type: 'text', text: parts.join('') }] };
+}
+
+// ── Core handler (full re-index) ────────────────────────────────────────
 
 async function toolHandler(
   mcpUnity: McpUnity,
@@ -239,6 +350,11 @@ async function toolHandler(
 
   if (!contextEngine.isInitialized) {
     throw new McpUnityError(ErrorType.INTERNAL, 'Context engine is not initialized');
+  }
+
+  // Incremental mode: update only the specified paths
+  if (parsed.data.paths && parsed.data.paths.length > 0) {
+    return incrementalIndexHandler(mcpUnity, contextEngine, parsed.data.paths, extra, logger);
   }
 
   const startTime = Date.now();

@@ -119,7 +119,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - **What it does**: Indexes project scripts, prefabs, and optionally scenes using the [Augment Context Engine SDK](https://docs.augmentcode.com/context-services/sdk/overview) for semantic search by AI agents.
 - **Architecture**: Unity collects asset documents via `collect_project_assets` and sends them to the Node MCP server, which indexes them via `DirectContext` from `@augmentcode/auggie-sdk`. Search is handled by the `search_project` MCP tool.
 - **Authentication**: Requires `auggie login` (stores session at `~/.augment/session.json`). Auto-detected by the SDK.
-- **Incremental indexing**: The SDK automatically skips unchanged files. State is persisted to `Library/.augment-context-state.json`.
+- **Incremental indexing**: The SDK automatically skips unchanged files. State is persisted to `Library/.augment-context-state.json`. Call `index_project` with a `paths` array to update only specific files after editing (no full re-index needed).
 - **Trigger**: Manual — AI agent calls the `index_project` MCP tool, or from the Context Engine tab in the MCP Unity editor window.
 - **Editor window**: The `Context Engine` tab shows auth status from `~/.augment/session.json`, folder/scope settings, and a dry-run preview button that tells users to run `index_project` from their AI agent.
 - **Document shape**: Unity returns `{ path, contents }` documents where `path` is the Unity asset path and `contents` is full file text or compact JSON summaries.
@@ -183,7 +183,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `control_editor` — Control Unity play mode state (play, pause, unpause, stop, step) with automatic domain reload handling
 - `get_editor_state` — Get editor state snapshot (play mode, compilation status, active scene, build platform, Unity version)
 - `collect_project_assets` — Collect project scripts, prefabs, and optional scenes as `{ path, contents }` documents for Context Engine indexing
-- `index_project` — Index Unity project assets for semantic search via Augment Context Engine (collects from Unity, indexes on Node side)
+- `index_project` — Index Unity project assets for semantic search via Augment Context Engine. Full re-index when called with no args; incremental update when called with `paths` array (e.g. after editing files)
 - `search_project` — Semantic search over indexed Unity project assets (scripts, prefabs, scenes)
 
 ### Available resources (current)
