@@ -351,24 +351,42 @@ namespace McpUnity.Tools
         }
 
         /// <summary>
-        /// Discovers local/embedded package folders under Packages/ that Unity recognizes.
-        /// These are packages with a physical folder on disk (not registry/git packages in Library/PackageCache).
+        /// Discovers local/embedded package folders that Unity recognizes.
+        /// Uses PackageManager API to find packages with source "Local" or "Embedded",
+        /// which are packages physically on disk (not registry/git packages in Library/PackageCache).
         /// </summary>
         private static List<string> GetLocalPackageFolders()
         {
             var result = new List<string>();
-            string packagesPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages");
 
-            if (!System.IO.Directory.Exists(packagesPath))
-                return result;
+            // Use the PackageManager API to list all packages and filter to local/embedded
+            var listRequest = UnityEditor.PackageManager.Client.List(offlineMode: true, includeIndirectDependencies: false);
 
-            foreach (string dir in System.IO.Directory.GetDirectories(packagesPath))
+            // Spin-wait for the request to complete (we're already in an editor coroutine context)
+            while (!listRequest.IsCompleted)
             {
-                string folderName = System.IO.Path.GetFileName(dir);
-                string assetDbPath = $"Packages/{folderName}";
-                if (AssetDatabase.IsValidFolder(assetDbPath))
+                System.Threading.Thread.Sleep(10);
+            }
+
+            if (listRequest.Status != UnityEditor.PackageManager.StatusCode.Success)
+            {
+                McpLogger.LogWarning("[Context Engine] Failed to list packages: " + (listRequest.Error?.message ?? "unknown error"));
+                return result;
+            }
+
+            foreach (var packageInfo in listRequest.Result)
+            {
+                // Only include local (file: reference) and embedded (Packages/ subfolder) packages
+                if (packageInfo.source == UnityEditor.PackageManager.PackageSource.Local ||
+                    packageInfo.source == UnityEditor.PackageManager.PackageSource.Embedded)
                 {
-                    result.Add(assetDbPath);
+                    // Unity AssetDatabase uses Packages/<package-name> as the path
+                    string assetDbPath = $"Packages/{packageInfo.name}";
+                    if (AssetDatabase.IsValidFolder(assetDbPath))
+                    {
+                        result.Add(assetDbPath);
+                        McpLogger.Log($"[Context Engine] Including local package: {packageInfo.name} ({packageInfo.displayName})");
+                    }
                 }
             }
 

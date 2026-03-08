@@ -359,7 +359,7 @@ namespace McpUnity.Unity
             
             if (settings.ContextEngineIndexFolders.Count == 0)
             {
-                EditorGUILayout.LabelField("No folders specified — will index all of Assets/", _wrappedLabelStyle);
+                EditorGUILayout.LabelField("No folders specified — will index all of Assets/ and local packages", _wrappedLabelStyle);
             }
             else
             {
