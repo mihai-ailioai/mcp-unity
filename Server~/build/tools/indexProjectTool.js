@@ -5,12 +5,15 @@ import { McpUnityError, ErrorType } from '../utils/errors.js';
 const toolName = 'index_project';
 const toolDescription = 'Indexes project assets into the context engine for semantic search. Supports automatic resume — if the operation is too large to complete in one call, it will return a message asking you to call this tool again to continue.';
 /**
- * Internal time budget for a single tool invocation. We leave a 30-second
- * safety margin before the MCP client timeout (typically 600s) so we can
- * save the checkpoint and return a "call again" message rather than letting
- * the transport kill us mid-flight.
+ * Internal time budget for a single tool invocation. When approaching this
+ * deadline, we save the checkpoint and return a "call again" message rather
+ * than letting the MCP client timeout kill us mid-flight.
+ *
+ * Set conservatively at 45s — some MCP clients enforce ~60s tool timeouts
+ * regardless of config. Multiple short invocations with checkpoint resume
+ * is preferable to a single timeout error.
  */
-const TOOL_TIME_BUDGET_MS = 540_000; // 9 minutes
+const TOOL_TIME_BUDGET_MS = 45_000; // 45 seconds
 const paramsSchema = z.object({});
 // ── Checkpoint persistence ──────────────────────────────────────────────
 const CHECKPOINT_PATH = path.resolve(process.cwd(), 'ProjectSettings/.context-engine-index-checkpoint.json');
