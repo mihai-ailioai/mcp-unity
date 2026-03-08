@@ -1,0 +1,61 @@
+import * as z from 'zod';
+import { McpUnityError, ErrorType } from '../utils/errors.js';
+const toolName = 'save_as_prefab';
+const toolDescription = 'Saves an existing scene GameObject as a prefab asset, with optional overwrite behavior and prefab variant creation when the source is a prefab instance';
+const paramsSchema = z.object({
+    instanceId: z.number().optional().describe('Optional scene GameObject instance ID to save as a prefab'),
+    objectPath: z.string().optional().describe('Optional scene GameObject hierarchy path to save as a prefab'),
+    prefabPath: z.string().optional().describe('Optional target prefab asset path (for example: Assets/Prefabs/Player.prefab)'),
+    overwrite: z.boolean().optional().default(false).describe('When true, overwrite an existing prefab at the target path'),
+    variant: z.boolean().optional().default(false).describe('When true and source is a prefab instance, create a prefab variant')
+});
+export function registerSaveAsPrefabTool(server, mcpUnity, logger) {
+    logger.info(`Registering tool: ${toolName}`);
+    server.tool(toolName, toolDescription, paramsSchema.shape, async (params) => {
+        try {
+            logger.info(`Executing tool: ${toolName}`, params);
+            const result = await toolHandler(mcpUnity, params);
+            logger.info(`Tool execution successful: ${toolName}`);
+            return result;
+        }
+        catch (error) {
+            logger.error(`Tool execution failed: ${toolName}`, error);
+            throw error;
+        }
+    });
+}
+async function toolHandler(mcpUnity, params) {
+    if ((params.instanceId === undefined || params.instanceId === null) &&
+        (!params.objectPath || params.objectPath.trim() === '')) {
+        throw new McpUnityError(ErrorType.VALIDATION, "Either 'instanceId' or 'objectPath' must be provided");
+    }
+    const response = await mcpUnity.sendRequest({
+        method: toolName,
+        params: {
+            instanceId: params.instanceId,
+            objectPath: params.objectPath,
+            prefabPath: params.prefabPath,
+            overwrite: params.overwrite,
+            variant: params.variant
+        }
+    });
+    if (!response.success) {
+        throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || 'Failed to save GameObject as prefab');
+    }
+    // Build response text including structured data for programmatic use
+    let text = response.message || 'Prefab saved successfully';
+    if (response.data) {
+        text += `\n\nPrefab path: ${response.data.prefabPath}`;
+        text += `\nInstance ID: ${response.data.instanceId}`;
+        text += `\nIs variant: ${response.data.isVariant}`;
+        if (response.data.basePrefabPath) {
+            text += `\nBase prefab: ${response.data.basePrefabPath}`;
+        }
+    }
+    return {
+        content: [{
+                type: response.type,
+                text
+            }]
+    };
+}
