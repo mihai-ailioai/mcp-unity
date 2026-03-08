@@ -474,9 +474,9 @@ namespace McpUnity.Unity
             }
 
             int scriptCount = CollectProjectAssetsTool.CollectScriptPaths(searchFolders).Count;
-            int prefabCount = CollectProjectAssetsTool.CollectPrefabs(searchFolders).Count;
+            int prefabCount = AssetDatabase.FindAssets("t:Prefab", searchFolders.ToArray()).Length;
             int sceneCount = settings.ContextEngineIndexScenes
-                ? CollectProjectAssetsTool.CollectScenes(searchFolders).Count
+                ? AssetDatabase.FindAssets("t:SceneAsset", searchFolders.ToArray()).Length
                 : 0;
 
             EditorUtility.ClearProgressBar();
