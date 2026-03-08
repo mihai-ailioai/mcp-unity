@@ -59,7 +59,7 @@ async function toolHandler(
   const { includeScenes, folders } = parsed.data;
   const response = (await mcpUnity.sendRequest(
     { method: 'collect_project_assets', params: { includeScenes, folders } },
-    { timeout: 120000 }
+    { timeout: 300000 }
   )) as CollectProjectAssetsResponse;
 
   if (!response.success) {

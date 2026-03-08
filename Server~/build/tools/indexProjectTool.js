@@ -30,7 +30,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, logger) {
         throw new McpUnityError(ErrorType.INTERNAL, 'Context engine is not initialized');
     }
     const { includeScenes, folders } = parsed.data;
-    const response = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { includeScenes, folders } }, { timeout: 120000 }));
+    const response = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { includeScenes, folders } }, { timeout: 300000 }));
     if (!response.success) {
         throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || 'Failed to collect project assets');
     }
