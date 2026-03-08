@@ -281,18 +281,33 @@ namespace McpUnity.Resources
         {
             if (string.IsNullOrEmpty(name)) return name;
             
-            int parenStart = name.LastIndexOf(" (", StringComparison.Ordinal);
-            if (parenStart < 0) return name;
-            
-            // Check that everything after " (" up to ")" is digits
-            if (!name.EndsWith(")")) return name;
-            string inside = name.Substring(parenStart + 2, name.Length - parenStart - 3);
-            foreach (char c in inside)
+            // Find " (N)" pattern anywhere in the string, not just at the end.
+            // This handles both "Stone01 (14)" and "tree_Elm_low (62) (MeshFilter, MeshRenderer)"
+            int searchStart = 0;
+            while (true)
             {
-                if (!char.IsDigit(c)) return name;
+                int parenStart = name.IndexOf(" (", searchStart, StringComparison.Ordinal);
+                if (parenStart < 0) return name;
+                
+                int closeIdx = name.IndexOf(')', parenStart + 2);
+                if (closeIdx < 0) return name;
+                
+                string inside = name.Substring(parenStart + 2, closeIdx - parenStart - 2);
+                bool allDigits = inside.Length > 0;
+                foreach (char c in inside)
+                {
+                    if (!char.IsDigit(c)) { allDigits = false; break; }
+                }
+                
+                if (allDigits)
+                {
+                    // Remove the " (N)" portion and return
+                    return name.Substring(0, parenStart) + name.Substring(closeIdx + 1);
+                }
+                
+                // Not digits — skip past this "(" and keep searching
+                searchStart = closeIdx + 1;
             }
-            
-            return name.Substring(0, parenStart);
         }
 
         /// <summary>
