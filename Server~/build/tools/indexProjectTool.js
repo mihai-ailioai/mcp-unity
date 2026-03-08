@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
+import { BATCH_SIZE } from '../services/contextEngine.js';
 import { McpUnityError, ErrorType } from '../utils/errors.js';
 const toolName = 'index_project';
 const toolDescription = 'Indexes project assets into the context engine for semantic search. Supports automatic resume — if the operation is too large to complete in one call, it will return a message asking you to call this tool again to continue.';
@@ -25,7 +26,11 @@ function loadCheckpoint(logger) {
         const data = JSON.parse(raw);
         if (typeof data.totalUnityDocuments !== 'number' || typeof data.collectedUnityDocuments !== 'number')
             return null;
-        logger.info(`Loaded checkpoint: ${data.collectedUnityDocuments}/${data.totalUnityDocuments} Unity docs collected, scripts indexed: ${data.scriptsIndexed}`);
+        // Migrate old checkpoints that used boolean scriptsIndexed
+        if (typeof data.scriptsIndexedCount !== 'number') {
+            data.scriptsIndexedCount = data.scriptsIndexed ? data.scriptDocuments.length : 0;
+        }
+        logger.info(`Loaded checkpoint: ${data.scriptsIndexedCount}/${data.scriptDocuments.length} scripts indexed, ${data.collectedUnityDocuments}/${data.totalUnityDocuments} Unity docs collected`);
         return data;
     }
     catch {
@@ -82,6 +87,19 @@ export function registerIndexProjectTool(server, mcpUnity, contextEngine, logger
         }
     });
 }
+// ── Early-return helper ────────────────────────────────────────────────
+function earlyReturn(scriptDocuments, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime) {
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const totalWork = scriptDocuments.length + totalUnityDocuments;
+    const totalDone = scriptsIndexedCount + unityOffset;
+    const pct = totalWork > 0 ? Math.round((totalDone / totalWork) * 100) : 0;
+    const lines = [];
+    lines.push(`Indexing in progress (${pct}% complete, ${elapsed}s elapsed):`);
+    lines.push(`  Scripts: ${scriptsIndexedCount}/${scriptDocuments.length} indexed`);
+    lines.push(`  Prefabs/scenes: ${unityOffset}/${totalUnityDocuments} collected, ${totalUnityDocsIndexed} indexed`);
+    lines.push(`Please call index_project again to continue from the checkpoint.`);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+}
 // ── Core handler ────────────────────────────────────────────────────────
 async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     const parsed = paramsSchema.safeParse(rawParams);
@@ -99,18 +117,13 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     }
     // ── Try to resume from checkpoint ─────────────────────────────────
     let checkpoint = loadCheckpoint(logger);
-    const isResume = checkpoint !== null && checkpoint.collectedUnityDocuments < checkpoint.totalUnityDocuments;
+    const isResume = checkpoint !== null && (checkpoint.scriptsIndexedCount < checkpoint.scriptDocuments.length ||
+        checkpoint.collectedUnityDocuments < checkpoint.totalUnityDocuments);
     if (!isResume) {
-        // Fresh run — clear the index and start from scratch
         checkpoint = null;
     }
-    // ── Phase 1: First page — collect scripts + discover total count ──
-    let scriptDocuments;
-    let totalUnityDocuments;
-    let unityOffset;
-    let scriptsIndexed;
+    // ── Aggregate indexing stats across all batches ───────────────────
     let totalUnityDocsIndexed = 0;
-    // Aggregate indexing stats across all batches
     const stats = { skipped: 0, newlyUploaded: 0, alreadyUploaded: 0, bytesUploaded: 0 };
     function accumulateStats(batch) {
         stats.skipped += batch.skipped;
@@ -118,24 +131,28 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         stats.alreadyUploaded += batch.alreadyUploaded;
         stats.bytesUploaded += batch.bytesUploaded;
     }
+    // ── Phase 0: Collect or restore data ──────────────────────────────
+    let scriptDocuments;
+    let scriptsIndexedCount;
+    let totalUnityDocuments;
+    let unityOffset;
     if (checkpoint) {
-        // Resume: use cached script documents and pick up where we left off
         scriptDocuments = checkpoint.scriptDocuments;
+        scriptsIndexedCount = checkpoint.scriptsIndexedCount;
         totalUnityDocuments = checkpoint.totalUnityDocuments;
         unityOffset = checkpoint.collectedUnityDocuments;
-        scriptsIndexed = checkpoint.scriptsIndexed;
-        logger.info(`Resuming: ${unityOffset}/${totalUnityDocuments} Unity docs already collected`);
-        await sendProgress(extra, unityOffset, totalUnityDocuments, `Resuming from checkpoint (${unityOffset}/${totalUnityDocuments} docs)...`, logger);
+        logger.info(`Resuming: ${scriptsIndexedCount}/${scriptDocuments.length} scripts, ${unityOffset}/${totalUnityDocuments} Unity docs`);
+        await sendProgress(extra, scriptsIndexedCount + unityOffset, scriptDocuments.length + totalUnityDocuments, `Resuming from checkpoint...`, logger);
     }
     else {
-        // Fresh run
-        await sendProgress(extra, 0, 1, 'Collecting project assets from Unity (page 1)...', logger);
+        // Fresh run — collect script paths from Unity
+        await sendProgress(extra, 0, 1, 'Collecting project assets from Unity...', logger);
         const firstPage = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { offset: 0 } }, { timeout: 300000 }));
         if (!firstPage.success) {
             throw new McpUnityError(ErrorType.TOOL_EXECUTION, firstPage.message || 'Failed to collect project assets');
         }
         totalUnityDocuments = firstPage.totalDocuments ?? (firstPage.documents?.length ?? 0);
-        // Read script contents from disk (Unity only sends paths, which are always on the first page)
+        // Read script contents from disk
         const unityProjectRoot = process.cwd();
         const scriptPaths = firstPage.scriptPaths ?? [];
         scriptDocuments = [];
@@ -158,97 +175,102 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         logger.info(`Successfully read ${scriptDocuments.length}/${scriptPaths.length} scripts from disk`);
         // Clear index once at the start of a fresh run
         await contextEngine.clearIndex();
-        // Index the first page of Unity documents immediately
+        // Index the first page of Unity documents (prefabs/scenes) immediately
         const firstPageDocs = firstPage.documents ?? [];
-        totalUnityDocsIndexed += firstPageDocs.length;
-        const firstBatchDocs = [...scriptDocuments, ...firstPageDocs];
-        if (firstBatchDocs.length > 0) {
+        if (firstPageDocs.length > 0) {
+            totalUnityDocsIndexed += firstPageDocs.length;
             const isOnlyPage = (firstPage.nextOffset ?? firstPageDocs.length) >= totalUnityDocuments;
-            accumulateStats(await contextEngine.indexBatch(firstBatchDocs, isOnlyPage));
+            // Don't finalize yet — scripts still need indexing
+            accumulateStats(await contextEngine.indexBatch(firstPageDocs, isOnlyPage && scriptDocuments.length === 0));
         }
-        unityOffset = firstPage.nextOffset ?? firstPageDocs.length;
-        scriptsIndexed = true;
-        // Save checkpoint
+        unityOffset = firstPage.nextOffset ?? (firstPage.documents?.length ?? 0);
+        scriptsIndexedCount = 0;
+        // Save initial checkpoint
         saveCheckpoint({
             scriptDocuments,
+            scriptsIndexedCount: 0,
             totalUnityDocuments,
             collectedUnityDocuments: unityOffset,
             cleared: true,
-            scriptsIndexed: true,
         }, logger);
-        if (unityOffset >= totalUnityDocuments) {
-            // All done in a single page
-            deleteCheckpoint(logger);
-            const indexedPaths = contextEngine.getIndexedPaths();
-            const summary = formatSummary(scriptDocuments.length, totalUnityDocsIndexed, indexedPaths.length, stats, false);
-            await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
-            return { content: [{ type: 'text', text: summary }] };
-        }
-        // Check deadline after first page
+        // Check deadline after collection + first page indexing
         if (isNearDeadline()) {
-            logger.info('Approaching time limit after first page, saving checkpoint for resume');
-            const pct = Math.round((unityOffset / totalUnityDocuments) * 100);
-            const elapsed = Math.round((Date.now() - startTime) / 1000);
-            return {
-                content: [{
-                        type: 'text',
-                        text: `Indexing in progress: ${unityOffset}/${totalUnityDocuments} prefabs/scenes collected (${pct}%), ${scriptDocuments.length} scripts indexed. Elapsed: ${elapsed}s. Please call index_project again to continue from the checkpoint.`,
-                    }],
-            };
+            logger.info('Approaching time limit after collection phase');
+            return earlyReturn(scriptDocuments, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
         }
+    }
+    // ── Phase 1: Index scripts in batches ─────────────────────────────
+    while (scriptsIndexedCount < scriptDocuments.length) {
+        if (isNearDeadline()) {
+            logger.info('Approaching time limit during script indexing');
+            return earlyReturn(scriptDocuments, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
+        }
+        const batchEnd = Math.min(scriptsIndexedCount + BATCH_SIZE, scriptDocuments.length);
+        const batch = scriptDocuments.slice(scriptsIndexedCount, batchEnd);
+        const isLastScriptBatch = batchEnd >= scriptDocuments.length;
+        // Only finalize if this is both the last script batch AND all prefabs are done
+        const isLastOverall = isLastScriptBatch && unityOffset >= totalUnityDocuments;
+        const batchNum = Math.floor(scriptsIndexedCount / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(scriptDocuments.length / BATCH_SIZE);
+        const msg = `Indexing scripts batch ${batchNum}/${totalBatches} (${scriptsIndexedCount}/${scriptDocuments.length})...`;
+        logger.info(msg);
+        await sendProgress(extra, scriptsIndexedCount, scriptDocuments.length + totalUnityDocuments, msg, logger);
+        accumulateStats(await contextEngine.indexBatch(batch, isLastOverall));
+        scriptsIndexedCount = batchEnd;
+        // Update checkpoint
+        saveCheckpoint({
+            scriptDocuments,
+            scriptsIndexedCount,
+            totalUnityDocuments,
+            collectedUnityDocuments: unityOffset,
+            cleared: true,
+        }, logger);
+    }
+    // Check if everything is done (small project, all fit in first page)
+    if (unityOffset >= totalUnityDocuments) {
+        deleteCheckpoint(logger);
+        const indexedPaths = contextEngine.getIndexedPaths();
+        const summary = formatSummary(scriptDocuments.length, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
+        await sendProgress(extra, scriptDocuments.length + totalUnityDocuments, scriptDocuments.length + totalUnityDocuments, summary, logger);
+        return { content: [{ type: 'text', text: summary }] };
     }
     // ── Phase 2: Paginate remaining Unity documents ───────────────────
     while (unityOffset < totalUnityDocuments) {
-        // Check deadline before starting the next page
         if (isNearDeadline()) {
-            logger.info('Approaching time limit, saving checkpoint for resume');
-            const pct = Math.round((unityOffset / totalUnityDocuments) * 100);
-            const elapsed = Math.round((Date.now() - startTime) / 1000);
-            return {
-                content: [{
-                        type: 'text',
-                        text: `Indexing in progress: ${unityOffset}/${totalUnityDocuments} prefabs/scenes collected (${pct}%), ${totalUnityDocsIndexed} indexed so far, ${scriptDocuments.length} scripts indexed. Elapsed: ${elapsed}s. Please call index_project again to continue from the checkpoint.`,
-                    }],
-            };
+            logger.info('Approaching time limit during prefab/scene collection');
+            return earlyReturn(scriptDocuments, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
         }
         const pageMsg = `Collecting Unity assets (${unityOffset}/${totalUnityDocuments})...`;
         logger.info(pageMsg);
-        await sendProgress(extra, unityOffset, totalUnityDocuments, pageMsg, logger);
+        await sendProgress(extra, scriptDocuments.length + unityOffset, scriptDocuments.length + totalUnityDocuments, pageMsg, logger);
         const page = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { offset: unityOffset } }, { timeout: 300000 }));
         if (!page.success) {
             throw new McpUnityError(ErrorType.TOOL_EXECUTION, page.message || `Failed to collect assets at offset ${unityOffset}`);
         }
         const pageDocs = page.documents ?? [];
         if (pageDocs.length === 0) {
-            // No more documents — totalDocuments may have been an overcount (e.g., null prefabs)
             logger.info(`Empty page at offset ${unityOffset}, stopping pagination`);
             break;
         }
         totalUnityDocsIndexed += pageDocs.length;
-        // If resuming and scripts haven't been indexed yet, prepend them to first batch
-        let docsToIndex = pageDocs;
-        if (!scriptsIndexed && scriptDocuments.length > 0) {
-            docsToIndex = [...scriptDocuments, ...pageDocs];
-            scriptsIndexed = true;
-        }
         const newOffset = page.nextOffset ?? (unityOffset + pageDocs.length);
         const isLastPage = newOffset >= totalUnityDocuments;
-        accumulateStats(await contextEngine.indexBatch(docsToIndex, isLastPage));
+        accumulateStats(await contextEngine.indexBatch(pageDocs, isLastPage));
         unityOffset = newOffset;
         // Update checkpoint
         saveCheckpoint({
             scriptDocuments,
+            scriptsIndexedCount,
             totalUnityDocuments,
             collectedUnityDocuments: unityOffset,
             cleared: true,
-            scriptsIndexed,
         }, logger);
     }
     // ── Done ──────────────────────────────────────────────────────────
     deleteCheckpoint(logger);
     const indexedPaths = contextEngine.getIndexedPaths();
     const summary = formatSummary(scriptDocuments.length, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
-    await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
+    await sendProgress(extra, scriptDocuments.length + totalUnityDocuments, scriptDocuments.length + totalUnityDocuments, summary, logger);
     logger.info('Completed project indexing run', {
         scriptCount: scriptDocuments.length,
         unityDocumentCount: totalUnityDocsIndexed,
