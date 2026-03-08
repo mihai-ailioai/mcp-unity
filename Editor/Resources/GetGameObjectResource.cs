@@ -95,36 +95,109 @@ namespace McpUnity.Resources
         /// Convert a GameObject to a summary JObject containing only name, instanceId,
         /// component type names, and children. Useful for quickly scanning large hierarchies
         /// without the overhead of full component property serialization.
+        /// 
+        /// For deep hierarchies, children beyond <paramref name="maxDepth"/> levels are
+        /// flattened into compact single-line strings ("Name (Component1, Component2)")
+        /// under a "deepChildren" array instead of fully nested objects.
         /// </summary>
         /// <param name="gameObject">The GameObject to convert</param>
+        /// <param name="maxDepth">Maximum nesting depth for full JSON objects (default 4).
+        /// Children beyond this depth are flattened into compact strings.</param>
         /// <returns>A lightweight JObject representing the GameObject</returns>
-        public static JObject GameObjectToSummaryJObject(GameObject gameObject)
+        public static JObject GameObjectToSummaryJObject(GameObject gameObject, int maxDepth = 4)
+        {
+            return GameObjectToSummaryJObjectInternal(gameObject, 0, maxDepth);
+        }
+
+        private static JObject GameObjectToSummaryJObjectInternal(GameObject gameObject, int currentDepth, int maxDepth)
         {
             if (gameObject == null) return null;
             
-            // Collect component type names
+            // Collect component type names (excluding Transform which every GO has)
             Component[] components = gameObject.GetComponents<Component>();
             JArray componentTypes = new JArray();
             foreach (Component component in components)
             {
                 if (component == null) continue;
-                componentTypes.Add(component.GetType().Name);
+                string typeName = component.GetType().Name;
+                if (typeName != "Transform" && typeName != "RectTransform")
+                {
+                    componentTypes.Add(typeName);
+                }
             }
             
-            // Recurse into children
-            JArray childrenArray = new JArray();
-            foreach (Transform child in gameObject.transform)
-            {
-                childrenArray.Add(GameObjectToSummaryJObject(child.gameObject));
-            }
-            
-            return new JObject
+            JObject result = new JObject
             {
                 ["name"] = gameObject.name,
-                ["instanceId"] = gameObject.GetInstanceID(),
                 ["components"] = componentTypes,
-                ["children"] = childrenArray
             };
+
+            if (gameObject.transform.childCount == 0)
+            {
+                return result;
+            }
+
+            if (currentDepth < maxDepth)
+            {
+                // Within depth limit: recurse normally with full JSON objects
+                JArray childrenArray = new JArray();
+                foreach (Transform child in gameObject.transform)
+                {
+                    JObject childObj = GameObjectToSummaryJObjectInternal(child.gameObject, currentDepth + 1, maxDepth);
+                    if (childObj != null)
+                    {
+                        childrenArray.Add(childObj);
+                    }
+                }
+                result["children"] = childrenArray;
+            }
+            else
+            {
+                // Beyond depth limit: flatten all descendants into compact strings
+                JArray deepChildren = new JArray();
+                CollectDeepChildrenFlat(gameObject.transform, deepChildren);
+                result["deepChildren"] = deepChildren;
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Recursively collects all descendants as compact single-line strings:
+        /// "Name (Component1, Component2)" or just "Name" if only Transform.
+        /// </summary>
+        private static void CollectDeepChildrenFlat(Transform parent, JArray output)
+        {
+            foreach (Transform child in parent)
+            {
+                if (child == null) continue;
+                
+                GameObject go = child.gameObject;
+                Component[] components = go.GetComponents<Component>();
+                
+                // Collect non-Transform component names
+                var typeNames = new System.Collections.Generic.List<string>();
+                foreach (Component c in components)
+                {
+                    if (c == null) continue;
+                    string typeName = c.GetType().Name;
+                    if (typeName != "Transform" && typeName != "RectTransform")
+                    {
+                        typeNames.Add(typeName);
+                    }
+                }
+                
+                string entry = typeNames.Count > 0
+                    ? $"{go.name} ({string.Join(", ", typeNames)})"
+                    : go.name;
+                output.Add(entry);
+                
+                // Recurse into this child's descendants
+                if (child.childCount > 0)
+                {
+                    CollectDeepChildrenFlat(child, output);
+                }
+            }
         }
 
         /// <summary>
