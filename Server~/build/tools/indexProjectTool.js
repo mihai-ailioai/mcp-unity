@@ -5,8 +5,6 @@ import { McpUnityError, ErrorType } from '../utils/errors.js';
 const toolName = 'index_project';
 const toolDescription = 'Indexes project assets into the context engine for semantic search. Supports automatic resume if a previous run was interrupted.';
 const paramsSchema = z.object({});
-/** Page size for prefab/scene document collection from Unity. */
-const COLLECT_PAGE_SIZE = 100;
 // ── Checkpoint persistence ──────────────────────────────────────────────
 const CHECKPOINT_PATH = path.resolve(process.cwd(), 'ProjectSettings/.context-engine-index-checkpoint.json');
 function loadCheckpoint(logger) {
@@ -107,7 +105,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     else {
         // Fresh run
         await sendProgress(extra, 0, 1, 'Collecting project assets from Unity (page 1)...', logger);
-        const firstPage = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { offset: 0, limit: COLLECT_PAGE_SIZE } }, { timeout: 300000 }));
+        const firstPage = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { offset: 0 } }, { timeout: 300000 }));
         if (!firstPage.success) {
             throw new McpUnityError(ErrorType.TOOL_EXECUTION, firstPage.message || 'Failed to collect project assets');
         }
@@ -139,10 +137,10 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         const firstPageDocs = firstPage.documents ?? [];
         const firstBatchDocs = [...scriptDocuments, ...firstPageDocs];
         if (firstBatchDocs.length > 0) {
-            const isOnlyPage = firstPageDocs.length >= totalUnityDocuments;
+            const isOnlyPage = (firstPage.nextOffset ?? firstPageDocs.length) >= totalUnityDocuments;
             await contextEngine.indexBatch(firstBatchDocs, isOnlyPage);
         }
-        unityOffset = firstPageDocs.length;
+        unityOffset = firstPage.nextOffset ?? firstPageDocs.length;
         scriptsIndexed = true;
         // Save checkpoint
         saveCheckpoint({
@@ -166,7 +164,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         const pageMsg = `Collecting Unity assets (${unityOffset}/${totalUnityDocuments})...`;
         logger.info(pageMsg);
         await sendProgress(extra, unityOffset, totalUnityDocuments, pageMsg, logger);
-        const page = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { offset: unityOffset, limit: COLLECT_PAGE_SIZE } }, { timeout: 300000 }));
+        const page = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { offset: unityOffset } }, { timeout: 300000 }));
         if (!page.success) {
             throw new McpUnityError(ErrorType.TOOL_EXECUTION, page.message || `Failed to collect assets at offset ${unityOffset}`);
         }
@@ -182,7 +180,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             docsToIndex = [...scriptDocuments, ...pageDocs];
             scriptsIndexed = true;
         }
-        const newOffset = unityOffset + pageDocs.length;
+        const newOffset = page.nextOffset ?? (unityOffset + pageDocs.length);
         const isLastPage = newOffset >= totalUnityDocuments;
         await contextEngine.indexBatch(docsToIndex, isLastPage);
         unityOffset = newOffset;

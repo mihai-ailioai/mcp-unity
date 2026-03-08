@@ -23,7 +23,13 @@ namespace McpUnity.Tools
     {
         public const string PrefabDocumentType = "prefab";
         public const string SceneDocumentType = "scene";
-        public const int DefaultPageSize = 100;
+
+        /// <summary>
+        /// Max total content size per page in bytes (~4 MB).
+        /// Documents are accumulated until the next one would exceed this threshold.
+        /// A single oversized document is always allowed as a solo page.
+        /// </summary>
+        public const int MaxPayloadBytes = 4 * 1024 * 1024;
 
         public class CollectedDocument
         {
@@ -55,9 +61,9 @@ namespace McpUnity.Tools
 
         private static IEnumerator ExecuteCollectCoroutine(JObject parameters, TaskCompletionSource<JObject> tcs)
         {
-            // Pagination params for prefab/scene documents
+            // Pagination: offset determines which prefab/scene index to start from.
+            // Documents are accumulated until adding the next one would exceed MaxPayloadBytes.
             int offset = parameters["offset"]?.ToObject<int>() ?? 0;
-            int limit = parameters["limit"]?.ToObject<int>() ?? DefaultPageSize;
 
             // Always use editor settings — folders and scene inclusion are configured in the Context Engine tab
             var settings = McpUnitySettings.Instance;
@@ -99,11 +105,12 @@ namespace McpUnity.Tools
 
                 int totalDocuments = assetGuids.Count;
 
-                // Paginate: only process the requested slice
-                int endIndex = Math.Min(offset + limit, totalDocuments);
+                // Size-based pagination: accumulate documents until the payload would exceed MaxPayloadBytes
                 var documents = new List<CollectedDocument>();
+                long accumulatedBytes = 0;
+                int processed = 0;
 
-                for (int i = offset; i < endIndex; i++)
+                for (int i = offset; i < totalDocuments; i++)
                 {
                     var entry = assetGuids[i];
 
@@ -112,28 +119,50 @@ namespace McpUnity.Tools
                         $"{entry.AssetPath}  ({i + 1}/{totalDocuments})",
                         (float)(i + 1) / totalDocuments);
 
+                    CollectedDocument doc = null;
                     try
                     {
                         if (entry.Type == PrefabDocumentType)
                         {
-                            var doc = ProcessPrefab(entry.AssetPath);
-                            if (doc != null) documents.Add(doc);
+                            doc = ProcessPrefab(entry.AssetPath);
                         }
                         else if (entry.Type == SceneDocumentType)
                         {
-                            var doc = ProcessScene(entry.AssetPath);
-                            if (doc != null) documents.Add(doc);
+                            doc = ProcessScene(entry.AssetPath);
                         }
                     }
                     catch (Exception ex)
                     {
                         McpLogger.LogError($"[Context Engine] Failed to process {entry.Type} {entry.AssetPath}: {ex.Message}");
                     }
+
+                    processed++;
+
+                    if (doc == null)
+                    {
+                        continue;
+                    }
+
+                    long docBytes = System.Text.Encoding.UTF8.GetByteCount(doc.Contents);
+
+                    // If adding this document would exceed the limit AND we already have at least one,
+                    // stop here — this document will be the first in the next page.
+                    if (accumulatedBytes > 0 && accumulatedBytes + docBytes > MaxPayloadBytes)
+                    {
+                        // Put this one back — don't count it as processed
+                        processed--;
+                        break;
+                    }
+
+                    documents.Add(doc);
+                    accumulatedBytes += docBytes;
                 }
+
+                int nextOffset = offset + processed;
 
                 EditorUtility.DisplayProgressBar(
                     "Context Engine — Preparing response",
-                    $"Page offset={offset} limit={limit}: {documents.Count} documents (total: {totalDocuments})",
+                    $"Page offset={offset}: {documents.Count} documents, {accumulatedBytes / 1024}KB (total: {totalDocuments})",
                     1f);
 
                 var responseScriptPaths = new JArray();
@@ -155,7 +184,7 @@ namespace McpUnity.Tools
                     ["documents"] = responseDocuments,
                     ["totalDocuments"] = totalDocuments,
                     ["offset"] = offset,
-                    ["limit"] = limit,
+                    ["nextOffset"] = nextOffset,
                 };
 
                 if (invalidFolders.Count > 0)

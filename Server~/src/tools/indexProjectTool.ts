@@ -13,16 +13,13 @@ const toolDescription = 'Indexes project assets into the context engine for sema
 
 const paramsSchema = z.object({});
 
-/** Page size for prefab/scene document collection from Unity. */
-const COLLECT_PAGE_SIZE = 100;
-
 type CollectProjectAssetsResponse = {
   success: boolean;
   scriptPaths?: string[];
   documents?: Array<{ path: string; contents: string }>;
   totalDocuments?: number;
   offset?: number;
-  limit?: number;
+  nextOffset?: number;
   message?: string;
 };
 
@@ -168,7 +165,7 @@ async function toolHandler(
     await sendProgress(extra, 0, 1, 'Collecting project assets from Unity (page 1)...', logger);
 
     const firstPage = (await mcpUnity.sendRequest(
-      { method: 'collect_project_assets', params: { offset: 0, limit: COLLECT_PAGE_SIZE } },
+      { method: 'collect_project_assets', params: { offset: 0 } },
       { timeout: 300000 }
     )) as CollectProjectAssetsResponse;
 
@@ -210,11 +207,11 @@ async function toolHandler(
     const firstBatchDocs = [...scriptDocuments, ...firstPageDocs];
 
     if (firstBatchDocs.length > 0) {
-      const isOnlyPage = firstPageDocs.length >= totalUnityDocuments;
+      const isOnlyPage = (firstPage.nextOffset ?? firstPageDocs.length) >= totalUnityDocuments;
       await contextEngine.indexBatch(firstBatchDocs, isOnlyPage);
     }
 
-    unityOffset = firstPageDocs.length;
+    unityOffset = firstPage.nextOffset ?? firstPageDocs.length;
     scriptsIndexed = true;
 
     // Save checkpoint
@@ -243,7 +240,7 @@ async function toolHandler(
     await sendProgress(extra, unityOffset, totalUnityDocuments, pageMsg, logger);
 
     const page = (await mcpUnity.sendRequest(
-      { method: 'collect_project_assets', params: { offset: unityOffset, limit: COLLECT_PAGE_SIZE } },
+      { method: 'collect_project_assets', params: { offset: unityOffset } },
       { timeout: 300000 }
     )) as CollectProjectAssetsResponse;
 
@@ -265,7 +262,7 @@ async function toolHandler(
       scriptsIndexed = true;
     }
 
-    const newOffset = unityOffset + pageDocs.length;
+    const newOffset = page.nextOffset ?? (unityOffset + pageDocs.length);
     const isLastPage = newOffset >= totalUnityDocuments;
     await contextEngine.indexBatch(docsToIndex, isLastPage);
 
