@@ -350,7 +350,7 @@ async function toolHandler(
   if (unityOffset >= totalUnityDocuments) {
     deleteCheckpoint(logger);
     const indexedPaths = contextEngine.getIndexedPaths();
-    const summary = formatSummary(totalScriptsRead, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
+    const summary = formatSummary(scriptPaths.length, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
     await sendProgress(extra, scriptPaths.length + totalUnityDocuments, scriptPaths.length + totalUnityDocuments, summary, logger);
     return { content: [{ type: 'text', text: summary }] };
   }
@@ -403,13 +403,13 @@ async function toolHandler(
   deleteCheckpoint(logger);
 
   const indexedPaths = contextEngine.getIndexedPaths();
-  const summary = formatSummary(totalScriptsRead, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
+  const summary = formatSummary(scriptPaths.length, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
 
   await sendProgress(extra, scriptPaths.length + totalUnityDocuments, scriptPaths.length + totalUnityDocuments, summary, logger);
 
   logger.info('Completed project indexing run', {
-    scriptCount: totalScriptsRead,
     scriptPaths: scriptPaths.length,
+    scriptsReadThisRun: totalScriptsRead,
     unityDocumentCount: totalUnityDocsIndexed,
     indexedPathCount: indexedPaths.length,
     ...stats,
