@@ -385,7 +385,7 @@ namespace McpUnity.Tools
                     if (AssetDatabase.IsValidFolder(assetDbPath))
                     {
                         result.Add(assetDbPath);
-                        McpLogger.Log($"[Context Engine] Including local package: {packageInfo.name} ({packageInfo.displayName})");
+                        McpLogger.LogInfo($"[Context Engine] Including local package: {packageInfo.name} ({packageInfo.displayName})");
                     }
                 }
             }
