@@ -139,7 +139,8 @@ namespace McpUnity.Utils
                     ["mcp-unity"] = new JObject
                     {
                         ["type"] = "local",
-                        ["command"] = new JArray("node", "./mcp-unity-server.mjs")
+                        ["command"] = new JArray("node", "./mcp-unity-server.mjs"),
+                        ["timeout"] = 600000
                     }
                 }
             };
