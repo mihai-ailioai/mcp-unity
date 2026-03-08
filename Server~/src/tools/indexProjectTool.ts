@@ -36,7 +36,7 @@ type CollectProjectAssetsResponse = {
 
 // ── Checkpoint persistence ──────────────────────────────────────────────
 
-const CHECKPOINT_PATH = path.resolve(process.cwd(), 'ProjectSettings/.context-engine-index-checkpoint.json');
+const CHECKPOINT_PATH = path.resolve(process.cwd(), 'Library/.context-engine-index-checkpoint.json');
 
 interface IndexCheckpoint {
   /** Script asset paths (contents are re-read from disk on resume). */

@@ -2,7 +2,7 @@ import path from 'path';
 import { DirectContext, type File as ContextDocument, type IndexingProgress } from '@augmentcode/auggie-sdk';
 import { Logger } from '../utils/logger.js';
 
-const STATE_FILE_PATH = path.resolve(process.cwd(), 'ProjectSettings/.augment-context-state.json');
+const STATE_FILE_PATH = path.resolve(process.cwd(), 'Library/.augment-context-state.json');
 const BATCH_SIZE = 100;
 
 /** Augment Context Engine max blob size (1 MB). Documents exceeding this are skipped. */

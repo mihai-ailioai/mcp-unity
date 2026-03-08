@@ -17,7 +17,7 @@ const toolDescription = 'Indexes project assets into the context engine for sema
 const TOOL_TIME_BUDGET_MS = 45_000; // 45 seconds
 const paramsSchema = z.object({});
 // ── Checkpoint persistence ──────────────────────────────────────────────
-const CHECKPOINT_PATH = path.resolve(process.cwd(), 'ProjectSettings/.context-engine-index-checkpoint.json');
+const CHECKPOINT_PATH = path.resolve(process.cwd(), 'Library/.context-engine-index-checkpoint.json');
 function loadCheckpoint(logger) {
     try {
         if (!fs.existsSync(CHECKPOINT_PATH))
