@@ -352,41 +352,44 @@ namespace McpUnity.Tools
 
         /// <summary>
         /// Discovers local/embedded package folders that Unity recognizes.
-        /// Uses PackageManager API to find packages with source "Local" or "Embedded",
-        /// which are packages physically on disk (not registry/git packages in Library/PackageCache).
+        /// Reads package.json in each Packages/ subdirectory to get the real package name,
+        /// since the folder name (e.g. "Core-Module") often differs from the package name
+        /// (e.g. "com.evlppy.core") that Unity uses in AssetDatabase paths.
         /// </summary>
         private static List<string> GetLocalPackageFolders()
         {
             var result = new List<string>();
+            string packagesPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages");
 
-            // Use the PackageManager API to list all packages and filter to local/embedded
-            var listRequest = UnityEditor.PackageManager.Client.List(offlineMode: true, includeIndirectDependencies: false);
-
-            // Spin-wait for the request to complete (we're already in an editor coroutine context)
-            while (!listRequest.IsCompleted)
-            {
-                System.Threading.Thread.Sleep(10);
-            }
-
-            if (listRequest.Status != UnityEditor.PackageManager.StatusCode.Success)
-            {
-                McpLogger.LogWarning("[Context Engine] Failed to list packages: " + (listRequest.Error?.message ?? "unknown error"));
+            if (!System.IO.Directory.Exists(packagesPath))
                 return result;
-            }
 
-            foreach (var packageInfo in listRequest.Result)
+            foreach (string dir in System.IO.Directory.GetDirectories(packagesPath))
             {
-                // Only include local (file: reference) and embedded (Packages/ subfolder) packages
-                if (packageInfo.source == UnityEditor.PackageManager.PackageSource.Local ||
-                    packageInfo.source == UnityEditor.PackageManager.PackageSource.Embedded)
+                string packageJsonPath = System.IO.Path.Combine(dir, "package.json");
+                if (!System.IO.File.Exists(packageJsonPath))
+                    continue;
+
+                try
                 {
-                    // Unity AssetDatabase uses Packages/<package-name> as the path
-                    string assetDbPath = $"Packages/{packageInfo.name}";
+                    string json = System.IO.File.ReadAllText(packageJsonPath);
+                    var packageJson = JObject.Parse(json);
+                    string packageName = packageJson["name"]?.ToString();
+
+                    if (string.IsNullOrEmpty(packageName))
+                        continue;
+
+                    string assetDbPath = $"Packages/{packageName}";
                     if (AssetDatabase.IsValidFolder(assetDbPath))
                     {
                         result.Add(assetDbPath);
-                        McpLogger.LogInfo($"[Context Engine] Including local package: {packageInfo.name} ({packageInfo.displayName})");
+                        McpLogger.LogInfo($"[Context Engine] Including local package: {assetDbPath}");
                     }
+                }
+                catch (System.Exception e)
+                {
+                    string folderName = System.IO.Path.GetFileName(dir);
+                    McpLogger.LogWarning($"[Context Engine] Failed to read package.json in {folderName}: {e.Message}");
                 }
             }
 
