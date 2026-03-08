@@ -38,6 +38,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, logger) {
     // Read script contents from disk (Unity only sends paths to avoid large WebSocket payloads)
     const scriptPaths = response.scriptPaths ?? [];
     const scriptDocuments = [];
+    logger.info(`Reading ${scriptPaths.length} scripts from disk (project root: ${unityProjectRoot})`);
     for (const scriptPath of scriptPaths) {
         try {
             const fullPath = path.resolve(unityProjectRoot, scriptPath);
@@ -50,9 +51,10 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, logger) {
             }
         }
         catch (err) {
-            logger.error(`Failed to read script ${scriptPath}: ${err.message}`);
+            logger.error(`Failed to read script ${scriptPath} (resolved: ${path.resolve(unityProjectRoot, scriptPath)}): ${err.message}`);
         }
     }
+    logger.info(`Successfully read ${scriptDocuments.length}/${scriptPaths.length} scripts from disk`);
     // Prefab/scene documents come with contents from Unity (they need runtime summarization)
     const unityDocuments = response.documents ?? [];
     const allDocuments = [...scriptDocuments, ...unityDocuments];

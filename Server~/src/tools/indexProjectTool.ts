@@ -73,6 +73,8 @@ async function toolHandler(
   const scriptPaths = response.scriptPaths ?? [];
   const scriptDocuments: Array<{ path: string; contents: string }> = [];
 
+  logger.info(`Reading ${scriptPaths.length} scripts from disk (project root: ${unityProjectRoot})`);
+
   for (const scriptPath of scriptPaths) {
     try {
       const fullPath = path.resolve(unityProjectRoot, scriptPath);
@@ -84,9 +86,11 @@ async function toolHandler(
         });
       }
     } catch (err: any) {
-      logger.error(`Failed to read script ${scriptPath}: ${err.message}`);
+      logger.error(`Failed to read script ${scriptPath} (resolved: ${path.resolve(unityProjectRoot, scriptPath)}): ${err.message}`);
     }
   }
+
+  logger.info(`Successfully read ${scriptDocuments.length}/${scriptPaths.length} scripts from disk`);
 
   // Prefab/scene documents come with contents from Unity (they need runtime summarization)
   const unityDocuments = response.documents ?? [];
