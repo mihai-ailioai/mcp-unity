@@ -115,16 +115,14 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - **Missing `.meta` files for C# scripts**: Every `.cs` file under `Editor/` **must** have a corresponding `.cs.meta` file committed to git. Unity packages are immutable folders — Unity cannot auto-generate meta files for them. Without a meta file, the script is silently ignored. Format: `fileFormatVersion: 2\nguid: <32-char-hex>`. Generate a unique GUID (e.g. `python3 -c "import uuid; print(uuid.uuid4().hex[:32])"`) for each new file.
 - **Schema compatibility across clients**: avoid reusing the same nested Zod object instance for multiple sibling fields (for example `position`, `rotation`, `scale`). Some MCP clients fail on local refs like `#/properties/position`; prefer creating a fresh nested schema per field.
 
-### Supermemory integration (semantic search)
-- **What it does**: Indexes project scripts, prefabs, and optionally scenes into [supermemory](https://supermemory.ai) for semantic search by AI agents.
-- **Push only**: mcp-unity only pushes documents to supermemory. Retrieval is handled by supermemory's own MCP server (users add it separately).
-- **Trigger**: Manual — click "Index Project" / "Re-index Project" in the MCP Unity settings window (Server tab → Supermemory Integration section).
-- **API key**: Resolved from `SUPERMEMORY_API_KEY` env var first, then from the in-memory password field in the editor (never persisted to disk).
-- **Container tag**: `unity-{ProductName}` by default (sanitized), or user-specified override in settings. Scopes indexed data per project.
-- **Document identity**: Asset GUID as `customId` — stable across renames/moves, enables incremental updates.
+### Context Engine integration (semantic search)
+- **What it does**: Collects project scripts, prefabs, and optionally scenes into documents for Augment's Context Engine.
+- **Flow**: Unity collects documents through `collect_project_assets`; the Node MCP server performs indexing/search.
+- **Editor window**: The `Context Engine` tab shows auth status from `~/.augment/session.json`, folder/scope settings, and a dry-run preview button that tells users to run `index_project` from their AI agent.
+- **Document shape**: Unity returns `{ path, contents }` documents where `path` is the Unity asset path and `contents` is full file text or compact JSON summaries.
 - **Content**: Full `.cs` source for scripts, summary JSON (via `GameObjectToSummaryJObject`) for prefabs/scenes.
-- **Settings** (in `McpUnitySettings`): `SupermemoryContainerTag`, `SupermemoryIndexScenes`, `SupermemoryLastIndexedTimestamp`.
-- **Implementation**: `Editor/Services/SupermemoryIndexer.cs` — collects via `AssetDatabase.FindAssets`, pushes via `UnityWebRequest` in batches of 100 to `POST /v3/documents/batch`.
+- **Settings** (in `McpUnitySettings`): `ContextEngineIndexFolders`, `ContextEngineIndexScenes`, `ContextEngineLastIndexedTimestamp`.
+- **Implementation**: `Editor/Tools/CollectProjectAssetsTool.cs` handles folder resolution and asset collection; `Server~/src/tools/indexProjectTool.ts` requests those documents and indexes them.
 
 ### Release/version bump checklist
 - Update versions consistently:
@@ -181,6 +179,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `find_gameobjects` — Search scene hierarchy by component type, name pattern, tag, layer, and optional root scope
 - `control_editor` — Control Unity play mode state (play, pause, unpause, stop, step) with automatic domain reload handling
 - `get_editor_state` — Get editor state snapshot (play mode, compilation status, active scene, build platform, Unity version)
+- `collect_project_assets` — Collect project scripts, prefabs, and optional scenes as `{ path, contents }` documents for Context Engine indexing
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
