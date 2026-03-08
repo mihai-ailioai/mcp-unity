@@ -109,8 +109,15 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     let totalUnityDocuments;
     let unityOffset;
     let scriptsIndexed;
-    let totalSkipped = 0;
     let totalUnityDocsIndexed = 0;
+    // Aggregate indexing stats across all batches
+    const stats = { skipped: 0, newlyUploaded: 0, alreadyUploaded: 0, bytesUploaded: 0 };
+    function accumulateStats(batch) {
+        stats.skipped += batch.skipped;
+        stats.newlyUploaded += batch.newlyUploaded;
+        stats.alreadyUploaded += batch.alreadyUploaded;
+        stats.bytesUploaded += batch.bytesUploaded;
+    }
     if (checkpoint) {
         // Resume: use cached script documents and pick up where we left off
         scriptDocuments = checkpoint.scriptDocuments;
@@ -157,7 +164,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         const firstBatchDocs = [...scriptDocuments, ...firstPageDocs];
         if (firstBatchDocs.length > 0) {
             const isOnlyPage = (firstPage.nextOffset ?? firstPageDocs.length) >= totalUnityDocuments;
-            totalSkipped += await contextEngine.indexBatch(firstBatchDocs, isOnlyPage);
+            accumulateStats(await contextEngine.indexBatch(firstBatchDocs, isOnlyPage));
         }
         unityOffset = firstPage.nextOffset ?? firstPageDocs.length;
         scriptsIndexed = true;
@@ -173,8 +180,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             // All done in a single page
             deleteCheckpoint(logger);
             const indexedPaths = contextEngine.getIndexedPaths();
-            const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
-            const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocsIndexed} prefabs/scenes${skippedNote}. Context engine now tracks ${indexedPaths.length} paths.`;
+            const summary = formatSummary(scriptDocuments.length, totalUnityDocsIndexed, indexedPaths.length, stats, false);
             await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
             return { content: [{ type: 'text', text: summary }] };
         }
@@ -227,7 +233,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         }
         const newOffset = page.nextOffset ?? (unityOffset + pageDocs.length);
         const isLastPage = newOffset >= totalUnityDocuments;
-        totalSkipped += await contextEngine.indexBatch(docsToIndex, isLastPage);
+        accumulateStats(await contextEngine.indexBatch(docsToIndex, isLastPage));
         unityOffset = newOffset;
         // Update checkpoint
         saveCheckpoint({
@@ -241,16 +247,48 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     // ── Done ──────────────────────────────────────────────────────────
     deleteCheckpoint(logger);
     const indexedPaths = contextEngine.getIndexedPaths();
-    const resumeNote = isResume ? ' (resumed from checkpoint)' : '';
-    const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
-    const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocsIndexed} prefabs/scenes${skippedNote}${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
+    const summary = formatSummary(scriptDocuments.length, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
     await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
     logger.info('Completed project indexing run', {
         scriptCount: scriptDocuments.length,
         unityDocumentCount: totalUnityDocsIndexed,
         indexedPathCount: indexedPaths.length,
-        skippedCount: totalSkipped,
+        ...stats,
         resumed: isResume,
     });
     return { content: [{ type: 'text', text: summary }] };
+}
+// ── Summary formatting ─────────────────────────────────────────────────
+function formatBytes(bytes) {
+    if (bytes < 1024)
+        return `${bytes}B`;
+    if (bytes < 1024 * 1024)
+        return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+function formatSummary(scriptCount, unityDocCount, indexedPathCount, stats, isResume) {
+    const parts = [];
+    parts.push(`Indexed ${scriptCount} scripts + ${unityDocCount} prefabs/scenes`);
+    // Upload details
+    const details = [];
+    if (stats.newlyUploaded > 0) {
+        details.push(`${stats.newlyUploaded} new`);
+    }
+    if (stats.alreadyUploaded > 0) {
+        details.push(`${stats.alreadyUploaded} unchanged`);
+    }
+    if (stats.skipped > 0) {
+        details.push(`${stats.skipped} skipped as oversized`);
+    }
+    if (stats.bytesUploaded > 0) {
+        details.push(`${formatBytes(stats.bytesUploaded)} uploaded`);
+    }
+    if (details.length > 0) {
+        parts.push(` (${details.join(', ')})`);
+    }
+    parts.push(`. Context engine now tracks ${indexedPathCount} paths.`);
+    if (isResume) {
+        parts.push(' (resumed from checkpoint)');
+    }
+    return parts.join('');
 }

@@ -1,5 +1,5 @@
 import path from 'path';
-import { DirectContext, type File as ContextDocument } from '@augmentcode/auggie-sdk';
+import { DirectContext, type File as ContextDocument, type IndexingProgress } from '@augmentcode/auggie-sdk';
 import { Logger } from '../utils/logger.js';
 
 const STATE_FILE_PATH = path.resolve(process.cwd(), 'ProjectSettings/.augment-context-state.json');
@@ -9,6 +9,18 @@ const BATCH_SIZE = 100;
 const MAX_BLOB_BYTES = 1_048_576;
 
 export { BATCH_SIZE };
+
+/** Stats returned from a single indexBatch call. */
+export interface BatchIndexStats {
+  /** Documents skipped due to exceeding size limit. */
+  skipped: number;
+  /** Documents newly uploaded to the backend. */
+  newlyUploaded: number;
+  /** Documents already present on the backend (unchanged). */
+  alreadyUploaded: number;
+  /** Total bytes uploaded in this batch. */
+  bytesUploaded: number;
+}
 
 export class ContextEngineService {
   private readonly logger = new Logger('ContextEngine');
@@ -96,12 +108,12 @@ export class ContextEngineService {
    * Automatically skips documents exceeding the 1MB blob size limit.
    * @param batch The documents to index in this batch.
    * @param isLastBatch If true, waits for indexing to complete and persists state.
-   * @returns Number of documents skipped due to size limits.
+   * @returns Stats about the batch: skipped, newlyUploaded, alreadyUploaded, bytesUploaded.
    */
   public async indexBatch(
     batch: Array<{ path: string; contents: string }>,
     isLastBatch: boolean
-  ): Promise<number> {
+  ): Promise<BatchIndexStats> {
     const context = this.requireContext();
 
     // Filter out documents that exceed the Context Engine blob size limit
@@ -117,10 +129,21 @@ export class ContextEngineService {
       }
     }
 
+    let newlyUploaded = 0;
+    let alreadyUploaded = 0;
+    let bytesUploaded = 0;
+
     if (validDocs.length > 0) {
-      await context.addToIndex(validDocs as ContextDocument[], {
+      const result = await context.addToIndex(validDocs as ContextDocument[], {
         waitForIndexing: isLastBatch,
+        onProgress: (progress: IndexingProgress) => {
+          if (progress.stage === 'uploading' && progress.bytesUploaded !== undefined) {
+            bytesUploaded = progress.bytesUploaded;
+          }
+        },
       });
+      newlyUploaded = result.newlyUploaded.length;
+      alreadyUploaded = result.alreadyUploaded.length;
     }
 
     if (isLastBatch) {
@@ -130,7 +153,7 @@ export class ContextEngineService {
       await context.exportToFile(STATE_FILE_PATH);
     }
 
-    return skipped;
+    return { skipped, newlyUploaded, alreadyUploaded, bytesUploaded };
   }
 
   public async search(query: string): Promise<string> {

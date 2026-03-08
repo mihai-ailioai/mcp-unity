@@ -78,7 +78,7 @@ export class ContextEngineService {
      * Automatically skips documents exceeding the 1MB blob size limit.
      * @param batch The documents to index in this batch.
      * @param isLastBatch If true, waits for indexing to complete and persists state.
-     * @returns Number of documents skipped due to size limits.
+     * @returns Stats about the batch: skipped, newlyUploaded, alreadyUploaded, bytesUploaded.
      */
     async indexBatch(batch, isLastBatch) {
         const context = this.requireContext();
@@ -95,10 +95,20 @@ export class ContextEngineService {
                 validDocs.push(doc);
             }
         }
+        let newlyUploaded = 0;
+        let alreadyUploaded = 0;
+        let bytesUploaded = 0;
         if (validDocs.length > 0) {
-            await context.addToIndex(validDocs, {
+            const result = await context.addToIndex(validDocs, {
                 waitForIndexing: isLastBatch,
+                onProgress: (progress) => {
+                    if (progress.stage === 'uploading' && progress.bytesUploaded !== undefined) {
+                        bytesUploaded = progress.bytesUploaded;
+                    }
+                },
             });
+            newlyUploaded = result.newlyUploaded.length;
+            alreadyUploaded = result.alreadyUploaded.length;
         }
         if (isLastBatch) {
             this.logger.info('Waiting for context engine indexing to finish');
@@ -106,7 +116,7 @@ export class ContextEngineService {
             this.logger.info(`Persisting context engine state to ${STATE_FILE_PATH}`);
             await context.exportToFile(STATE_FILE_PATH);
         }
-        return skipped;
+        return { skipped, newlyUploaded, alreadyUploaded, bytesUploaded };
     }
     async search(query) {
         const context = this.requireContext();
