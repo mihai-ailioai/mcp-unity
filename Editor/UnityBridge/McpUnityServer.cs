@@ -508,6 +508,10 @@ namespace McpUnity.Unity
             GetEditorStateTool getEditorStateTool = new GetEditorStateTool();
             _tools.Add(getEditorStateTool.Name, getEditorStateTool);
 
+            // Register CollectProjectAssetsTool
+            CollectProjectAssetsTool collectProjectAssetsTool = new CollectProjectAssetsTool();
+            _tools.Add(collectProjectAssetsTool.Name, collectProjectAssetsTool);
+
             // Register BatchExecuteTool (must be registered last as it needs access to other tools)
             BatchExecuteTool batchExecuteTool = new BatchExecuteTool(this);
             _tools.Add(batchExecuteTool.Name, batchExecuteTool);
