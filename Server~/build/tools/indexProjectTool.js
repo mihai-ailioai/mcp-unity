@@ -93,6 +93,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     let totalUnityDocuments;
     let unityOffset;
     let scriptsIndexed;
+    let totalSkipped = 0;
     if (checkpoint) {
         // Resume: use cached script documents and pick up where we left off
         scriptDocuments = checkpoint.scriptDocuments;
@@ -138,7 +139,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         const firstBatchDocs = [...scriptDocuments, ...firstPageDocs];
         if (firstBatchDocs.length > 0) {
             const isOnlyPage = (firstPage.nextOffset ?? firstPageDocs.length) >= totalUnityDocuments;
-            await contextEngine.indexBatch(firstBatchDocs, isOnlyPage);
+            totalSkipped += await contextEngine.indexBatch(firstBatchDocs, isOnlyPage);
         }
         unityOffset = firstPage.nextOffset ?? firstPageDocs.length;
         scriptsIndexed = true;
@@ -154,7 +155,8 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             // All done in a single page
             deleteCheckpoint(logger);
             const indexedPaths = contextEngine.getIndexedPaths();
-            const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocuments} prefabs/scenes. Context engine now tracks ${indexedPaths.length} paths.`;
+            const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
+            const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocuments} prefabs/scenes${skippedNote}. Context engine now tracks ${indexedPaths.length} paths.`;
             await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
             return { content: [{ type: 'text', text: summary }] };
         }
@@ -182,7 +184,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         }
         const newOffset = page.nextOffset ?? (unityOffset + pageDocs.length);
         const isLastPage = newOffset >= totalUnityDocuments;
-        await contextEngine.indexBatch(docsToIndex, isLastPage);
+        totalSkipped += await contextEngine.indexBatch(docsToIndex, isLastPage);
         unityOffset = newOffset;
         // Update checkpoint
         saveCheckpoint({
@@ -197,7 +199,8 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     deleteCheckpoint(logger);
     const indexedPaths = contextEngine.getIndexedPaths();
     const resumeNote = isResume ? ' (resumed from checkpoint)' : '';
-    const summary = `Indexed ${scriptDocuments.length} scripts + ${unityOffset} prefabs/scenes${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
+    const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
+    const summary = `Indexed ${scriptDocuments.length} scripts + ${unityOffset} prefabs/scenes${skippedNote}${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
     await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
     logger.info('Completed project indexing run', {
         scriptCount: scriptDocuments.length,

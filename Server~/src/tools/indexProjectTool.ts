@@ -149,6 +149,7 @@ async function toolHandler(
   let totalUnityDocuments: number;
   let unityOffset: number;
   let scriptsIndexed: boolean;
+  let totalSkipped = 0;
 
   if (checkpoint) {
     // Resume: use cached script documents and pick up where we left off
@@ -208,7 +209,7 @@ async function toolHandler(
 
     if (firstBatchDocs.length > 0) {
       const isOnlyPage = (firstPage.nextOffset ?? firstPageDocs.length) >= totalUnityDocuments;
-      await contextEngine.indexBatch(firstBatchDocs, isOnlyPage);
+      totalSkipped += await contextEngine.indexBatch(firstBatchDocs, isOnlyPage);
     }
 
     unityOffset = firstPage.nextOffset ?? firstPageDocs.length;
@@ -227,7 +228,8 @@ async function toolHandler(
       // All done in a single page
       deleteCheckpoint(logger);
       const indexedPaths = contextEngine.getIndexedPaths();
-      const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocuments} prefabs/scenes. Context engine now tracks ${indexedPaths.length} paths.`;
+      const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
+      const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocuments} prefabs/scenes${skippedNote}. Context engine now tracks ${indexedPaths.length} paths.`;
       await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
       return { content: [{ type: 'text', text: summary }] };
     }
@@ -264,7 +266,7 @@ async function toolHandler(
 
     const newOffset = page.nextOffset ?? (unityOffset + pageDocs.length);
     const isLastPage = newOffset >= totalUnityDocuments;
-    await contextEngine.indexBatch(docsToIndex, isLastPage);
+    totalSkipped += await contextEngine.indexBatch(docsToIndex, isLastPage);
 
     unityOffset = newOffset;
 
@@ -283,7 +285,8 @@ async function toolHandler(
 
   const indexedPaths = contextEngine.getIndexedPaths();
   const resumeNote = isResume ? ' (resumed from checkpoint)' : '';
-  const summary = `Indexed ${scriptDocuments.length} scripts + ${unityOffset} prefabs/scenes${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
+  const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
+  const summary = `Indexed ${scriptDocuments.length} scripts + ${unityOffset} prefabs/scenes${skippedNote}${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
 
   await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
 

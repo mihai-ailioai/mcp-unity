@@ -5,6 +5,9 @@ import { Logger } from '../utils/logger.js';
 const STATE_FILE_PATH = path.resolve(process.cwd(), 'ProjectSettings/.augment-context-state.json');
 const BATCH_SIZE = 100;
 
+/** Augment Context Engine max blob size (1 MB). Documents exceeding this are skipped. */
+const MAX_BLOB_BYTES = 1_048_576;
+
 export { BATCH_SIZE };
 
 export class ContextEngineService {
@@ -44,13 +47,23 @@ export class ContextEngineService {
     this.logger.info('Clearing previous index before re-indexing');
     await context.clearIndex();
 
-    this.logger.info(`Indexing ${documents.length} documents`);
+    // Filter out documents that exceed the Context Engine blob size limit
+    const validDocs = documents.filter(doc => {
+      const byteLength = Buffer.byteLength(doc.contents, 'utf-8');
+      if (byteLength > MAX_BLOB_BYTES) {
+        this.logger.warn(`Skipping oversized document (${(byteLength / 1024).toFixed(0)}KB > 1MB limit): ${doc.path}`);
+        return false;
+      }
+      return true;
+    });
 
-    for (let offset = 0; offset < documents.length; offset += BATCH_SIZE) {
-      const batch = documents.slice(offset, offset + BATCH_SIZE) as ContextDocument[];
+    this.logger.info(`Indexing ${validDocs.length} documents (${documents.length - validDocs.length} skipped as oversized)`);
+
+    for (let offset = 0; offset < validDocs.length; offset += BATCH_SIZE) {
+      const batch = validDocs.slice(offset, offset + BATCH_SIZE) as ContextDocument[];
       const batchNumber = Math.floor(offset / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(documents.length / BATCH_SIZE);
-      const isLastBatch = offset + BATCH_SIZE >= documents.length;
+      const totalBatches = Math.ceil(validDocs.length / BATCH_SIZE);
+      const isLastBatch = offset + BATCH_SIZE >= validDocs.length;
 
       this.logger.info(`Uploading indexing batch ${batchNumber}/${totalBatches}`, {
         batchSize: batch.length,
@@ -80,18 +93,35 @@ export class ContextEngineService {
 
   /**
    * Index a single batch of documents. Used by checkpoint-based resumable indexing.
+   * Automatically skips documents exceeding the 1MB blob size limit.
    * @param batch The documents to index in this batch.
    * @param isLastBatch If true, waits for indexing to complete and persists state.
+   * @returns Number of documents skipped due to size limits.
    */
   public async indexBatch(
     batch: Array<{ path: string; contents: string }>,
     isLastBatch: boolean
-  ): Promise<void> {
+  ): Promise<number> {
     const context = this.requireContext();
 
-    await context.addToIndex(batch as ContextDocument[], {
-      waitForIndexing: isLastBatch,
-    });
+    // Filter out documents that exceed the Context Engine blob size limit
+    const validDocs: Array<{ path: string; contents: string }> = [];
+    let skipped = 0;
+    for (const doc of batch) {
+      const byteLength = Buffer.byteLength(doc.contents, 'utf-8');
+      if (byteLength > MAX_BLOB_BYTES) {
+        this.logger.warn(`Skipping oversized document (${(byteLength / 1024).toFixed(0)}KB > 1MB limit): ${doc.path}`);
+        skipped++;
+      } else {
+        validDocs.push(doc);
+      }
+    }
+
+    if (validDocs.length > 0) {
+      await context.addToIndex(validDocs as ContextDocument[], {
+        waitForIndexing: isLastBatch,
+      });
+    }
 
     if (isLastBatch) {
       this.logger.info('Waiting for context engine indexing to finish');
@@ -99,6 +129,8 @@ export class ContextEngineService {
       this.logger.info(`Persisting context engine state to ${STATE_FILE_PATH}`);
       await context.exportToFile(STATE_FILE_PATH);
     }
+
+    return skipped;
   }
 
   public async search(query: string): Promise<string> {
