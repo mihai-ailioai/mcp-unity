@@ -59,6 +59,9 @@ import { registerGetTestsResource } from './resources/getTestsResource.js';
 import { registerGetGameObjectResource } from './resources/getGameObjectResource.js';
 import { registerGetSelectionResource } from './resources/getSelectionResource.js';
 import { registerGameObjectHandlingPrompt } from './prompts/gameobjectHandlingPrompt.js';
+import { ContextEngineService } from './services/contextEngine.js';
+import { registerSearchProjectTool } from './tools/searchProjectTool.js';
+import { registerIndexProjectTool } from './tools/indexProjectTool.js';
 
 // Initialize loggers
 const serverLogger = new Logger('Server', LogLevel.INFO);
@@ -83,6 +86,9 @@ const server = new McpServer (
 
 // Initialize MCP HTTP bridge with Unity editor
 const mcpUnity = new McpUnity(unityLogger);
+
+// Initialize Context Engine for semantic search
+const contextEngine = new ContextEngineService();
 
 // Register all tools into the MCP server
 registerMenuItemTool(server, mcpUnity, toolLogger);
@@ -148,6 +154,10 @@ registerGetMenuItemsTool(server, mcpUnity, toolLogger);
 // Register Batch Execute Tool (high-priority for performance)
 registerBatchExecuteTool(server, mcpUnity, toolLogger);
 
+// Register Context Engine Tools
+registerSearchProjectTool(server, contextEngine, toolLogger);
+registerIndexProjectTool(server, mcpUnity, contextEngine, toolLogger);
+
 // Register all resources into the MCP server
 registerGetTestsResource(server, mcpUnity, resourceLogger);
 registerGetGameObjectResource(server, mcpUnity, resourceLogger);
@@ -178,6 +188,12 @@ async function startServer() {
     
     // Start Unity Bridge connection with client name in headers
     await mcpUnity.start(clientName);
+
+    // Initialize Context Engine (non-blocking — search/index will fail gracefully if not ready)
+    contextEngine.initialize().catch((error: any) => {
+      serverLogger.warn(`Context Engine initialization skipped: ${error.message}. ` +
+        `Run "auggie login" to authenticate with Augment.`);
+    });
     
   } catch (error) {
     serverLogger.error('Failed to start server', error);
