@@ -66,8 +66,8 @@ async function toolHandler(
     throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || 'Failed to collect project assets');
   }
 
-  // Unity project root is one level up from Server~ CWD
-  const unityProjectRoot = path.resolve(process.cwd(), '..');
+  // CWD is the Unity project root (set by the launcher wrapper script)
+  const unityProjectRoot = process.cwd();
 
   // Read script contents from disk (Unity only sends paths to avoid large WebSocket payloads)
   const scriptPaths = response.scriptPaths ?? [];
