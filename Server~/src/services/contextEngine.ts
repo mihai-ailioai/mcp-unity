@@ -38,6 +38,10 @@ export class ContextEngineService {
       return;
     }
 
+    // Clear stale index so it reflects exactly what the editor is configured to index
+    this.logger.info('Clearing previous index before re-indexing');
+    await context.clearIndex();
+
     this.logger.info(`Indexing ${documents.length} documents`);
 
     for (let offset = 0; offset < documents.length; offset += BATCH_SIZE) {
