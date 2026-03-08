@@ -1,8 +1,6 @@
 using System;
 using System.IO;
-using McpUnity.Utils;
 using UnityEngine;
-using UnityEditor;
 
 namespace McpUnity.Unity
 {
@@ -40,17 +38,14 @@ namespace McpUnity.Unity
         [Tooltip("Allow connections from remote MCP bridges. When disabled, only localhost connections are allowed (default).")]
         public bool AllowRemoteConnections = false;
 
-        [Tooltip("Optional: Custom container tag for supermemory indexing. Defaults to 'unity-{ProductName}'.")]
-        public string SupermemoryContainerTag = string.Empty;
+        [Tooltip("Folders under Assets/ to include in Context Engine indexing (e.g. 'Game/Scripts'). Empty list means all of Assets/.")]
+        public System.Collections.Generic.List<string> ContextEngineIndexFolders = new System.Collections.Generic.List<string>();
         
-        [Tooltip("Folders under Assets/ to index (e.g. 'Game/Scripts'). Empty list means all of Assets/.")]
-        public System.Collections.Generic.List<string> SupermemoryIndexFolders = new System.Collections.Generic.List<string>();
+        [Tooltip("Whether to include scene files when collecting Context Engine documents (can be slow for large scenes).")]
+        public bool ContextEngineIndexScenes = false;
         
-        [Tooltip("Whether to include scene files when indexing to supermemory (can be slow for large scenes).")]
-        public bool SupermemoryIndexScenes = false;
-        
-        [Tooltip("Timestamp of the last successful supermemory indexing operation.")]
-        public string SupermemoryLastIndexedTimestamp = string.Empty;
+        [Tooltip("Timestamp of the last successful Context Engine indexing operation.")]
+        public string ContextEngineLastIndexedTimestamp = string.Empty;
 
         /// <summary>
         /// Singleton instance of settings

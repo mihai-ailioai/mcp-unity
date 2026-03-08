@@ -1,6 +1,7 @@
 using System;
+using System.IO;
+using McpUnity.Tools;
 using McpUnity.Utils;
-using McpUnity.Services;
 using UnityEngine;
 using UnityEditor;
 
@@ -19,13 +20,12 @@ namespace McpUnity.Unity
         private GUIStyle _connectedClientBoxStyle; // Style for individual connected clients
         private GUIStyle _connectedClientLabelStyle; // Style for labels in connected client boxes
         private int _selectedTab = 0;
-        private readonly string[] _tabNames = { "Server", "Supermemory", "Help" };
-        private Vector2 _supermemoryTabScrollPosition = Vector2.zero;
+        private readonly string[] _tabNames = { "Server", "Context Engine", "Help" };
+        private Vector2 _contextEngineTabScrollPosition = Vector2.zero;
         private bool _isInitialized = false;
         
         private Vector2 _helpTabScrollPosition = Vector2.zero;
         private Vector2 _serverTabScrollPosition = Vector2.zero;
-        private string _supermemoryApiKeyInput = string.Empty;
 
         [MenuItem("Tools/MCP Unity/Server Window", false, 1)]
         public static void ShowWindow()
@@ -54,8 +54,8 @@ namespace McpUnity.Unity
                 case 0: // Server tab
                     DrawServerTab();
                     break;
-                case 1: // Supermemory tab
-                    DrawSupermemoryTab();
+                case 1: // Context Engine tab
+                    DrawContextEngineTab();
                     break;
                 case 2: // Help tab
                     DrawHelpTab();
@@ -289,68 +289,46 @@ namespace McpUnity.Unity
             EditorGUILayout.EndScrollView();
         }
 
-        private void DrawSupermemoryTab()
+        private void DrawContextEngineTab()
         {
-            _supermemoryTabScrollPosition = EditorGUILayout.BeginScrollView(_supermemoryTabScrollPosition);
+            _contextEngineTabScrollPosition = EditorGUILayout.BeginScrollView(_contextEngineTabScrollPosition);
             EditorGUILayout.BeginVertical();
             
             EditorGUILayout.HelpBox(
-                "Index your project's scripts and prefabs into supermemory for semantic search by AI agents. " +
-                "Retrieval is handled by supermemory's own MCP server (add it separately to your AI tool).",
+                "Index your project's scripts and prefabs for semantic search by AI agents using the Augment Context Engine. " +
+                "Requires authentication via 'auggie login' in your terminal.",
                 MessageType.Info);
             EditorGUILayout.Space();
             
             McpUnitySettings settings = McpUnitySettings.Instance;
+            string authPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".augment",
+                "session.json");
+            bool isAuthenticated = File.Exists(authPath);
             
             // ── Authentication ──
             EditorGUILayout.LabelField("Authentication", _subHeaderStyle);
             EditorGUILayout.BeginVertical(_boxStyle);
             
-            bool hasEnvKey = SupermemoryIndexer.IsApiKeyFromEnvironment();
+            GUIStyle authStyle = new GUIStyle(EditorStyles.boldLabel);
+            authStyle.normal.textColor = isAuthenticated
+                ? new Color(0.1f, 0.6f, 0.1f)
+                : new Color(0.85f, 0.6f, 0.1f);
             
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("API Key", GUILayout.Width(120));
+            EditorGUILayout.LabelField(
+                isAuthenticated ? "Authenticated" : "Not authenticated - run 'auggie login' in your terminal",
+                authStyle);
             
-            if (hasEnvKey)
+            if (!isAuthenticated)
             {
-                GUI.enabled = false;
-                EditorGUILayout.PasswordField("••••••••••••", GUILayout.ExpandWidth(true));
-                GUI.enabled = true;
-                
-                GUIStyle envStyle = new GUIStyle(EditorStyles.miniLabel);
-                envStyle.normal.textColor = Color.green;
-                EditorGUILayout.LabelField("(env var)", envStyle, GUILayout.Width(60));
+                EditorGUILayout.HelpBox(
+                    "Not authenticated — run 'auggie login' in your terminal.",
+                    MessageType.Warning);
             }
             else
             {
-                // Re-sync session key on every draw — static field is lost on domain reload
-                // but this instance field survives since the window stays open
-                if (!string.IsNullOrEmpty(_supermemoryApiKeyInput) && 
-                    SupermemoryIndexer.SessionApiKey != _supermemoryApiKeyInput)
-                {
-                    SupermemoryIndexer.SessionApiKey = _supermemoryApiKeyInput;
-                }
-                
-                string newKey = EditorGUILayout.PasswordField(
-                    _supermemoryApiKeyInput, GUILayout.ExpandWidth(true));
-                if (newKey != _supermemoryApiKeyInput)
-                {
-                    _supermemoryApiKeyInput = newKey;
-                    SupermemoryIndexer.SessionApiKey = newKey;
-                }
-            }
-            EditorGUILayout.EndHorizontal();
-            
-            if (!hasEnvKey && string.IsNullOrEmpty(_supermemoryApiKeyInput))
-            {
-                EditorGUILayout.HelpBox(
-                    "Enter your API key above, or set the SUPERMEMORY_API_KEY environment variable for persistent configuration.",
-                    MessageType.Warning);
-            }
-            else if (!hasEnvKey)
-            {
-                EditorGUILayout.LabelField("Session only — lost on editor restart. Use env var for persistence.", 
-                    EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("Unity detected an Augment session on this machine.", EditorStyles.miniLabel);
             }
             
             EditorGUILayout.EndVertical();
@@ -360,29 +338,14 @@ namespace McpUnity.Unity
             EditorGUILayout.LabelField("Configuration", _subHeaderStyle);
             EditorGUILayout.BeginVertical(_boxStyle);
             
-            // Container tag
-            string newContainerTag = EditorGUILayout.TextField(
-                new GUIContent("Container Tag", 
-                    $"Scopes indexed data in supermemory. Default: 'unity-{Application.productName}'"),
-                settings.SupermemoryContainerTag);
-            if (newContainerTag != settings.SupermemoryContainerTag)
-            {
-                settings.SupermemoryContainerTag = newContainerTag;
-                settings.SaveSettings();
-            }
-            EditorGUILayout.LabelField($"Effective: {SupermemoryIndexer.GetContainerTag()}", 
-                EditorStyles.miniLabel);
-            
-            EditorGUILayout.Space();
-            
             // Include scenes toggle
             bool newIndexScenes = EditorGUILayout.Toggle(
                 new GUIContent("Include Scenes", 
-                    "Include scene files when indexing. Scenes are opened additively which can be slow for large projects."),
-                settings.SupermemoryIndexScenes);
-            if (newIndexScenes != settings.SupermemoryIndexScenes)
+                    "Include scene files when collecting Context Engine documents. Scenes are opened additively which can be slow for large projects."),
+                settings.ContextEngineIndexScenes);
+            if (newIndexScenes != settings.ContextEngineIndexScenes)
             {
-                settings.SupermemoryIndexScenes = newIndexScenes;
+                settings.ContextEngineIndexScenes = newIndexScenes;
                 settings.SaveSettings();
             }
             
@@ -393,21 +356,21 @@ namespace McpUnity.Unity
             EditorGUILayout.LabelField("Index Folders", _subHeaderStyle);
             EditorGUILayout.BeginVertical(_boxStyle);
             
-            if (settings.SupermemoryIndexFolders.Count == 0)
+            if (settings.ContextEngineIndexFolders.Count == 0)
             {
                 EditorGUILayout.LabelField("No folders specified — will index all of Assets/", EditorStyles.miniLabel);
             }
             else
             {
                 int removeIndex = -1;
-                for (int i = 0; i < settings.SupermemoryIndexFolders.Count; i++)
+                for (int i = 0; i < settings.ContextEngineIndexFolders.Count; i++)
                 {
                     EditorGUILayout.BeginHorizontal();
                     
                     // Load the current folder as a DefaultAsset for the ObjectField
-                    string currentPath = string.IsNullOrEmpty(settings.SupermemoryIndexFolders[i]) 
-                        ? "" : $"Assets/{settings.SupermemoryIndexFolders[i]}";
-                    var currentFolder = string.IsNullOrEmpty(currentPath) 
+                    string currentPath = string.IsNullOrEmpty(settings.ContextEngineIndexFolders[i])
+                        ? "" : $"Assets/{settings.ContextEngineIndexFolders[i]}";
+                    var currentFolder = string.IsNullOrEmpty(currentPath)
                         ? null : AssetDatabase.LoadAssetAtPath<DefaultAsset>(currentPath);
                     
                     // Drag-and-drop folder field
@@ -421,13 +384,13 @@ namespace McpUnity.Unity
                             string droppedPath = AssetDatabase.GetAssetPath(droppedFolder);
                             if (AssetDatabase.IsValidFolder(droppedPath) && droppedPath.StartsWith("Assets/"))
                             {
-                                settings.SupermemoryIndexFolders[i] = droppedPath.Substring("Assets/".Length);
+                                settings.ContextEngineIndexFolders[i] = droppedPath.Substring("Assets/".Length);
                                 settings.SaveSettings();
                             }
                         }
                         else
                         {
-                            settings.SupermemoryIndexFolders[i] = string.Empty;
+                            settings.ContextEngineIndexFolders[i] = string.Empty;
                             settings.SaveSettings();
                         }
                     }
@@ -440,7 +403,7 @@ namespace McpUnity.Unity
                 }
                 if (removeIndex >= 0)
                 {
-                    settings.SupermemoryIndexFolders.RemoveAt(removeIndex);
+                    settings.ContextEngineIndexFolders.RemoveAt(removeIndex);
                     settings.SaveSettings();
                 }
             }
@@ -449,7 +412,7 @@ namespace McpUnity.Unity
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("+ Add Folder", GUILayout.Width(120)))
             {
-                settings.SupermemoryIndexFolders.Add(string.Empty);
+                settings.ContextEngineIndexFolders.Add(string.Empty);
                 settings.SaveSettings();
             }
             EditorGUILayout.EndHorizontal();
@@ -461,46 +424,83 @@ namespace McpUnity.Unity
             EditorGUILayout.LabelField("Actions", _subHeaderStyle);
             EditorGUILayout.BeginVertical(_boxStyle);
             
-            GUI.enabled = SupermemoryIndexer.HasApiKey;
-            string buttonLabel = string.IsNullOrEmpty(settings.SupermemoryLastIndexedTimestamp) 
-                ? "Index Project" 
+            EditorGUILayout.LabelField(
+                "Indexing is performed by the Node MCP server when your AI agent calls the 'index_project' tool.",
+                _wrappedLabelStyle);
+            EditorGUILayout.Space();
+            
+            string buttonLabel = string.IsNullOrEmpty(settings.ContextEngineLastIndexedTimestamp)
+                ? "Index Project"
                 : "Re-index Project";
             if (GUILayout.Button(buttonLabel, GUILayout.Height(30)))
             {
-                SupermemoryIndexer.IndexProject(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolders);
+                ShowContextEngineIndexPreview(settings);
             }
-            GUI.enabled = true;
             
             EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "Unity does not track Node-side indexed path counts. Ask your AI agent to run 'index_project' to perform indexing.",
+                EditorStyles.miniLabel);
             
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Check for Changes"))
-            {
-                SupermemoryIndexer.CheckForChanges(settings.SupermemoryIndexScenes, settings.SupermemoryIndexFolders);
-            }
-            if (GUILayout.Button("Check Processing Status"))
-            {
-                SupermemoryIndexer.CheckProcessingStatus();
-            }
-            EditorGUILayout.EndHorizontal();
-            
-            // Last indexed timestamp
-            if (!string.IsNullOrEmpty(settings.SupermemoryLastIndexedTimestamp))
+            if (!string.IsNullOrEmpty(settings.ContextEngineLastIndexedTimestamp))
             {
                 EditorGUILayout.Space();
-                if (DateTime.TryParse(settings.SupermemoryLastIndexedTimestamp, out DateTime lastIndexed))
+                if (DateTime.TryParse(settings.ContextEngineLastIndexedTimestamp, out DateTime lastIndexed))
                 {
-                    EditorGUILayout.LabelField($"Last indexed: {lastIndexed.ToLocalTime():g}", 
-                        EditorStyles.centeredGreyMiniLabel);
+                    EditorGUILayout.LabelField($"Last indexed: {lastIndexed.ToLocalTime():g}", EditorStyles.centeredGreyMiniLabel);
                 }
             }
-            
-            EditorGUILayout.EndVertical();
             
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndScrollView();
         }
         
+        private void ShowContextEngineIndexPreview(McpUnitySettings settings)
+        {
+            if (!CollectProjectAssetsTool.TryCollectDocuments(
+                settings.ContextEngineIndexScenes,
+                settings.ContextEngineIndexFolders,
+                out var documents,
+                out var invalidFolders,
+                out string errorMessage))
+            {
+                EditorUtility.DisplayDialog("Context Engine", errorMessage, "OK");
+                return;
+            }
+
+            int scriptCount = 0;
+            int prefabCount = 0;
+            int sceneCount = 0;
+
+            foreach (CollectProjectAssetsTool.CollectedDocument document in documents)
+            {
+                switch (document.Type)
+                {
+                    case CollectProjectAssetsTool.ScriptDocumentType:
+                        scriptCount++;
+                        break;
+                    case CollectProjectAssetsTool.PrefabDocumentType:
+                        prefabCount++;
+                        break;
+                    case CollectProjectAssetsTool.SceneDocumentType:
+                        sceneCount++;
+                        break;
+                }
+            }
+
+            string sceneSummary = settings.ContextEngineIndexScenes ? $", {sceneCount} scenes" : string.Empty;
+            string invalidSummary = invalidFolders.Count > 0
+                ? $"\n\nSkipped invalid folders: {string.Join(", ", invalidFolders)}"
+                : string.Empty;
+
+            EditorUtility.DisplayDialog(
+                "Context Engine",
+                $"Project has {scriptCount} scripts, {prefabCount} prefabs{sceneSummary} ready for indexing.\n\n" +
+                "Use the 'index_project' MCP tool from your AI agent to index them." +
+                invalidSummary,
+                "OK");
+        }
+         
         private void DrawHelpTab()
         {
             // Begin scrollable area
@@ -619,6 +619,7 @@ namespace McpUnity.Unity
             EditorGUILayout.LabelField("Example prompt:", EditorStyles.miniLabel);
             WrappedLabel("Add the Player prefab from my project to the current scene", new GUIStyle(EditorStyles.miniLabel) { fontStyle = FontStyle.Italic });
             EditorGUILayout.EndVertical();
+            EditorGUILayout.Space();
             
             // recompile_scripts
             WrappedLabel("recompile_scripts", EditorStyles.boldLabel);
