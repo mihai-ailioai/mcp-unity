@@ -92,19 +92,22 @@ namespace McpUnity.Resources
         }
 
         /// <summary>
-        /// Convert a GameObject to a summary JObject containing only name, instanceId,
+        /// Convert a GameObject to a summary JObject containing only name,
         /// component type names, and children. Useful for quickly scanning large hierarchies
         /// without the overhead of full component property serialization.
         /// 
-        /// For deep hierarchies, children beyond <paramref name="maxDepth"/> levels are
-        /// flattened into compact single-line strings ("Name (Component1, Component2)")
-        /// under a "deepChildren" array instead of fully nested objects.
+        /// Two compression strategies keep large prefabs under the 1 MB indexing limit:
+        /// 1. Depth limiting: children beyond <paramref name="maxDepth"/> levels are
+        ///    flattened into compact single-line strings in a "deepChildren" array.
+        /// 2. Sibling deduplication: siblings with identical component sets and identical
+        ///    subtree shapes are collapsed into a single representative with a "count" field
+        ///    (e.g., 60 identical Stone objects become one entry with count=60).
         /// </summary>
         /// <param name="gameObject">The GameObject to convert</param>
-        /// <param name="maxDepth">Maximum nesting depth for full JSON objects (default 4).
+        /// <param name="maxDepth">Maximum nesting depth for full JSON objects (default 3).
         /// Children beyond this depth are flattened into compact strings.</param>
         /// <returns>A lightweight JObject representing the GameObject</returns>
-        public static JObject GameObjectToSummaryJObject(GameObject gameObject, int maxDepth = 4)
+        public static JObject GameObjectToSummaryJObject(GameObject gameObject, int maxDepth = 3)
         {
             return GameObjectToSummaryJObjectInternal(gameObject, 0, maxDepth);
         }
@@ -114,22 +117,12 @@ namespace McpUnity.Resources
             if (gameObject == null) return null;
             
             // Collect component type names (excluding Transform which every GO has)
-            Component[] components = gameObject.GetComponents<Component>();
-            JArray componentTypes = new JArray();
-            foreach (Component component in components)
-            {
-                if (component == null) continue;
-                string typeName = component.GetType().Name;
-                if (typeName != "Transform" && typeName != "RectTransform")
-                {
-                    componentTypes.Add(typeName);
-                }
-            }
+            var componentTypes = GetComponentTypeNames(gameObject);
             
             JObject result = new JObject
             {
                 ["name"] = gameObject.name,
-                ["components"] = componentTypes,
+                ["components"] = new JArray(componentTypes.ToArray()),
             };
 
             if (gameObject.transform.childCount == 0)
@@ -139,53 +132,181 @@ namespace McpUnity.Resources
 
             if (currentDepth < maxDepth)
             {
-                // Within depth limit: recurse normally with full JSON objects
-                JArray childrenArray = new JArray();
+                // Within depth limit: recurse normally, then deduplicate siblings
+                var childObjects = new List<JObject>();
                 foreach (Transform child in gameObject.transform)
                 {
                     JObject childObj = GameObjectToSummaryJObjectInternal(child.gameObject, currentDepth + 1, maxDepth);
                     if (childObj != null)
                     {
-                        childrenArray.Add(childObj);
+                        childObjects.Add(childObj);
                     }
                 }
-                result["children"] = childrenArray;
+                result["children"] = DeduplicateSiblings(childObjects);
             }
             else
             {
                 // Beyond depth limit: flatten all descendants into compact strings
-                JArray deepChildren = new JArray();
-                CollectDeepChildrenFlat(gameObject.transform, deepChildren);
-                result["deepChildren"] = deepChildren;
+                var deepEntries = new List<string>();
+                CollectDeepChildrenFlat(gameObject.transform, deepEntries);
+                // Deduplicate flat entries too
+                result["deepChildren"] = DeduplicateFlatEntries(deepEntries);
             }
             
             return result;
         }
 
         /// <summary>
+        /// Returns non-Transform component type names for a GameObject.
+        /// </summary>
+        private static List<string> GetComponentTypeNames(GameObject gameObject)
+        {
+            var typeNames = new List<string>();
+            Component[] components = gameObject.GetComponents<Component>();
+            foreach (Component component in components)
+            {
+                if (component == null) continue;
+                string typeName = component.GetType().Name;
+                if (typeName != "Transform" && typeName != "RectTransform")
+                {
+                    typeNames.Add(typeName);
+                }
+            }
+            return typeNames;
+        }
+
+        /// <summary>
+        /// Computes a structural fingerprint of a summary JObject for deduplication.
+        /// Two siblings are "identical" if they have the same component set and
+        /// the same recursive subtree shape (ignoring names and counts).
+        /// </summary>
+        private static string ComputeStructureFingerprint(JObject obj)
+        {
+            var sb = new System.Text.StringBuilder();
+            ComputeFingerprintRecursive(obj, sb);
+            return sb.ToString();
+        }
+
+        private static void ComputeFingerprintRecursive(JObject obj, System.Text.StringBuilder sb)
+        {
+            // Components signature
+            JArray comps = obj["components"] as JArray;
+            if (comps != null)
+            {
+                sb.Append("C:");
+                foreach (var c in comps) sb.Append(c.ToString()).Append(',');
+            }
+            sb.Append('|');
+
+            // Recurse into children
+            JArray children = obj["children"] as JArray;
+            if (children != null)
+            {
+                sb.Append("CH:");
+                foreach (JObject child in children)
+                {
+                    sb.Append('{');
+                    ComputeFingerprintRecursive(child, sb);
+                    sb.Append('}');
+                }
+            }
+
+            // Deep children signature
+            JArray deep = obj["deepChildren"] as JArray;
+            if (deep != null)
+            {
+                sb.Append("DC:");
+                foreach (var d in deep) sb.Append(d.ToString()).Append(',');
+            }
+        }
+
+        /// <summary>
+        /// Collapses siblings with identical structure into a single representative
+        /// with a "count" field. Preserves ordering by using first occurrence.
+        /// </summary>
+        private static JArray DeduplicateSiblings(List<JObject> siblings)
+        {
+            if (siblings.Count <= 1)
+            {
+                return new JArray(siblings.ToArray());
+            }
+
+            // Group by structural fingerprint, preserving insertion order
+            var groups = new List<KeyValuePair<string, List<JObject>>>();
+            var fingerToIndex = new Dictionary<string, int>();
+
+            foreach (JObject sibling in siblings)
+            {
+                string fp = ComputeStructureFingerprint(sibling);
+                if (fingerToIndex.TryGetValue(fp, out int idx))
+                {
+                    groups[idx].Value.Add(sibling);
+                }
+                else
+                {
+                    fingerToIndex[fp] = groups.Count;
+                    groups.Add(new KeyValuePair<string, List<JObject>>(fp, new List<JObject> { sibling }));
+                }
+            }
+
+            JArray result = new JArray();
+            foreach (var group in groups)
+            {
+                JObject representative = group.Value[0];
+                if (group.Value.Count > 1)
+                {
+                    // Collect unique base names (strip trailing " (N)" numbering)
+                    var baseNames = new HashSet<string>();
+                    foreach (JObject obj in group.Value)
+                    {
+                        string name = obj["name"]?.ToString() ?? "";
+                        baseNames.Add(StripInstanceNumber(name));
+                    }
+                    
+                    representative = (JObject)representative.DeepClone();
+                    representative["name"] = string.Join("/", baseNames);
+                    representative["count"] = group.Value.Count;
+                }
+                result.Add(representative);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Strips trailing " (N)" instance numbering from a GameObject name.
+        /// "Stone01 (14)" -> "Stone01", "Car01" -> "Car01"
+        /// </summary>
+        private static string StripInstanceNumber(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return name;
+            
+            int parenStart = name.LastIndexOf(" (", StringComparison.Ordinal);
+            if (parenStart < 0) return name;
+            
+            // Check that everything after " (" up to ")" is digits
+            if (!name.EndsWith(")")) return name;
+            string inside = name.Substring(parenStart + 2, name.Length - parenStart - 3);
+            foreach (char c in inside)
+            {
+                if (!char.IsDigit(c)) return name;
+            }
+            
+            return name.Substring(0, parenStart);
+        }
+
+        /// <summary>
         /// Recursively collects all descendants as compact single-line strings:
         /// "Name (Component1, Component2)" or just "Name" if only Transform.
         /// </summary>
-        private static void CollectDeepChildrenFlat(Transform parent, JArray output)
+        private static void CollectDeepChildrenFlat(Transform parent, List<string> output)
         {
             foreach (Transform child in parent)
             {
                 if (child == null) continue;
                 
                 GameObject go = child.gameObject;
-                Component[] components = go.GetComponents<Component>();
-                
-                // Collect non-Transform component names
-                var typeNames = new System.Collections.Generic.List<string>();
-                foreach (Component c in components)
-                {
-                    if (c == null) continue;
-                    string typeName = c.GetType().Name;
-                    if (typeName != "Transform" && typeName != "RectTransform")
-                    {
-                        typeNames.Add(typeName);
-                    }
-                }
+                var typeNames = GetComponentTypeNames(go);
                 
                 string entry = typeNames.Count > 0
                     ? $"{go.name} ({string.Join(", ", typeNames)})"
@@ -198,6 +319,52 @@ namespace McpUnity.Resources
                     CollectDeepChildrenFlat(child, output);
                 }
             }
+        }
+
+        /// <summary>
+        /// Deduplicates flat string entries, collapsing identical ones into
+        /// "entry (xN)" format.
+        /// </summary>
+        private static JArray DeduplicateFlatEntries(List<string> entries)
+        {
+            if (entries.Count <= 1)
+            {
+                return new JArray(entries.ToArray());
+            }
+
+            // Group preserving order of first occurrence
+            var groups = new List<KeyValuePair<string, int>>();
+            var entryToIndex = new Dictionary<string, int>();
+
+            foreach (string entry in entries)
+            {
+                // Normalize: strip instance numbers for grouping
+                string normalized = StripInstanceNumber(entry);
+                if (entryToIndex.TryGetValue(normalized, out int idx))
+                {
+                    groups[idx] = new KeyValuePair<string, int>(groups[idx].Key, groups[idx].Value + 1);
+                }
+                else
+                {
+                    entryToIndex[normalized] = groups.Count;
+                    groups.Add(new KeyValuePair<string, int>(entry, 1));
+                }
+            }
+
+            JArray result = new JArray();
+            foreach (var group in groups)
+            {
+                if (group.Value > 1)
+                {
+                    result.Add($"{StripInstanceNumber(group.Key)} (x{group.Value})");
+                }
+                else
+                {
+                    result.Add(group.Key);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
