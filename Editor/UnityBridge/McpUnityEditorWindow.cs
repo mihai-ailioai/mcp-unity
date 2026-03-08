@@ -328,7 +328,7 @@ namespace McpUnity.Unity
             }
             else
             {
-                EditorGUILayout.LabelField("Unity detected an Augment session on this machine.", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("Unity detected an Augment session on this machine.", _wrappedLabelStyle);
             }
             
             EditorGUILayout.EndVertical();
@@ -358,7 +358,7 @@ namespace McpUnity.Unity
             
             if (settings.ContextEngineIndexFolders.Count == 0)
             {
-                EditorGUILayout.LabelField("No folders specified — will index all of Assets/", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("No folders specified — will index all of Assets/", _wrappedLabelStyle);
             }
             else
             {
@@ -440,17 +440,18 @@ namespace McpUnity.Unity
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(
                 "Unity does not track Node-side indexed path counts. Ask your AI agent to run 'index_project' to perform indexing.",
-                EditorStyles.miniLabel);
+                _wrappedLabelStyle);
             
             if (!string.IsNullOrEmpty(settings.ContextEngineLastIndexedTimestamp))
             {
                 EditorGUILayout.Space();
                 if (DateTime.TryParse(settings.ContextEngineLastIndexedTimestamp, out DateTime lastIndexed))
                 {
-                    EditorGUILayout.LabelField($"Last indexed: {lastIndexed.ToLocalTime():g}", EditorStyles.centeredGreyMiniLabel);
+                    EditorGUILayout.LabelField($"Last indexed: {lastIndexed.ToLocalTime():g}", _wrappedLabelStyle);
                 }
             }
             
+            EditorGUILayout.Space();
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndScrollView();
         }
