@@ -460,36 +460,25 @@ namespace McpUnity.Unity
         
         private void ShowContextEngineIndexPreview(McpUnitySettings settings)
         {
-            if (!CollectProjectAssetsTool.TryCollectDocuments(
-                settings.ContextEngineIndexScenes,
-                settings.ContextEngineIndexFolders,
-                out var documents,
-                out var invalidFolders,
-                out string errorMessage))
+            List<string> searchFolders = CollectProjectAssetsTool.ResolveSearchFolders(
+                settings.ContextEngineIndexFolders, out List<string> invalidFolders);
+
+            if (searchFolders.Count == 0)
             {
+                string errorMessage = invalidFolders.Count > 0
+                    ? $"No valid folders found. Invalid: {string.Join(", ", invalidFolders)}"
+                    : "No valid folders found.";
                 EditorUtility.DisplayDialog("Context Engine", errorMessage, "OK");
                 return;
             }
 
-            int scriptCount = 0;
-            int prefabCount = 0;
-            int sceneCount = 0;
+            int scriptCount = CollectProjectAssetsTool.CollectScriptPaths(searchFolders).Count;
+            int prefabCount = CollectProjectAssetsTool.CollectPrefabs(searchFolders).Count;
+            int sceneCount = settings.ContextEngineIndexScenes
+                ? CollectProjectAssetsTool.CollectScenes(searchFolders).Count
+                : 0;
 
-            foreach (CollectProjectAssetsTool.CollectedDocument document in documents)
-            {
-                switch (document.Type)
-                {
-                    case CollectProjectAssetsTool.ScriptDocumentType:
-                        scriptCount++;
-                        break;
-                    case CollectProjectAssetsTool.PrefabDocumentType:
-                        prefabCount++;
-                        break;
-                    case CollectProjectAssetsTool.SceneDocumentType:
-                        sceneCount++;
-                        break;
-                }
-            }
+            EditorUtility.ClearProgressBar();
 
             string sceneSummary = settings.ContextEngineIndexScenes ? $", {sceneCount} scenes" : string.Empty;
             string invalidSummary = invalidFolders.Count > 0

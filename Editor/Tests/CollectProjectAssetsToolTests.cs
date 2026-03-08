@@ -71,7 +71,7 @@ namespace McpUnity.Tests
         }
 
         [Test]
-        public void CollectProjectAssetsTool_CollectScripts_ReturnsFilePathAndContents()
+        public void CollectProjectAssetsTool_CollectScriptPaths_ReturnsFilePaths()
         {
             string[] scriptGuids = AssetDatabase.FindAssets("CollectProjectAssetsTool t:MonoScript");
             Assert.IsNotEmpty(scriptGuids, "Expected to find the CollectProjectAssetsTool script asset");
@@ -80,14 +80,9 @@ namespace McpUnity.Tests
             string scriptFolder = Path.GetDirectoryName(scriptPath)?.Replace('\\', '/');
             Assert.IsFalse(string.IsNullOrEmpty(scriptFolder), "Expected a valid script folder");
 
-            var documents = CollectProjectAssetsTool.CollectScripts(new System.Collections.Generic.List<string> { scriptFolder });
-            JObject scriptDocument = documents
-                .Select(document => document.ToResponseJObject())
-                .FirstOrDefault(document => document["path"]?.ToString() == scriptPath);
+            var paths = CollectProjectAssetsTool.CollectScriptPaths(new System.Collections.Generic.List<string> { scriptFolder });
 
-            Assert.IsNotNull(scriptDocument, "Expected collected script document");
-            StringAssert.StartsWith($"// File: {scriptPath}\n", scriptDocument["contents"]?.ToString());
-            StringAssert.Contains("class CollectProjectAssetsTool", scriptDocument["contents"]?.ToString());
+            Assert.IsTrue(paths.Contains(scriptPath), "Expected collected script path list to contain the tool script");
         }
 
         [UnityTest]
@@ -103,6 +98,11 @@ namespace McpUnity.Tests
             JObject result = resultTask.Result;
             Assert.IsTrue(result["success"]?.ToObject<bool>() ?? false);
 
+            // Script paths are returned separately (Node reads contents from disk)
+            JArray scriptPaths = result["scriptPaths"] as JArray;
+            Assert.IsNotNull(scriptPaths, "Expected scriptPaths array in response");
+
+            // Documents only contain prefabs/scenes (not scripts)
             JArray documents = result["documents"] as JArray;
             Assert.IsNotNull(documents);
 

@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import * as z from 'zod';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ContextEngineService } from '../services/contextEngine.js';
 import { McpUnity } from '../unity/mcpUnity.js';
 import { McpUnityError, ErrorType } from '../utils/errors.js';
@@ -16,6 +18,7 @@ const paramsSchema = z.object({
 
 type CollectProjectAssetsResponse = {
   success: boolean;
+  scriptPaths?: string[];
   documents?: Array<{ path: string; contents: string }>;
   message?: string;
 };
@@ -66,9 +69,35 @@ async function toolHandler(
     throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || 'Failed to collect project assets');
   }
 
-  const documents = response.documents ?? [];
-  if (documents.length === 0) {
-    logger.info('Unity returned no documents for indexing');
+  // Unity project root is one level up from Server~ CWD
+  const unityProjectRoot = path.resolve(process.cwd(), '..');
+
+  // Read script contents from disk (Unity only sends paths to avoid large WebSocket payloads)
+  const scriptPaths = response.scriptPaths ?? [];
+  const scriptDocuments: Array<{ path: string; contents: string }> = [];
+
+  for (const scriptPath of scriptPaths) {
+    try {
+      const fullPath = path.resolve(unityProjectRoot, scriptPath);
+      const fileContents = fs.readFileSync(fullPath, 'utf-8');
+      if (fileContents.trim().length > 0) {
+        scriptDocuments.push({
+          path: scriptPath,
+          contents: `// File: ${scriptPath}\n${fileContents}`,
+        });
+      }
+    } catch (err: any) {
+      logger.error(`Failed to read script ${scriptPath}: ${err.message}`);
+    }
+  }
+
+  // Prefab/scene documents come with contents from Unity (they need runtime summarization)
+  const unityDocuments = response.documents ?? [];
+
+  const allDocuments = [...scriptDocuments, ...unityDocuments];
+
+  if (allDocuments.length === 0) {
+    logger.info('No documents found for indexing');
     return {
       content: [
         {
@@ -79,13 +108,15 @@ async function toolHandler(
     };
   }
 
-  await contextEngine.indexDocuments(documents);
+  await contextEngine.indexDocuments(allDocuments);
 
   const indexedPaths = contextEngine.getIndexedPaths();
-  const summary = `Indexed ${documents.length} documents. Context engine now tracks ${indexedPaths.length} paths.`;
+  const summary = `Indexed ${allDocuments.length} documents (${scriptDocuments.length} scripts read from disk, ${unityDocuments.length} prefabs/scenes from Unity). Context engine now tracks ${indexedPaths.length} paths.`;
 
   logger.info('Completed project indexing run', {
-    indexedDocumentCount: documents.length,
+    scriptCount: scriptDocuments.length,
+    unityDocumentCount: unityDocuments.length,
+    totalIndexed: allDocuments.length,
     indexedPathCount: indexedPaths.length,
   });
 

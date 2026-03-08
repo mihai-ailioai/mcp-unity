@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading.Tasks;
 using McpUnity.Resources;
 using McpUnity.Unity;
@@ -20,7 +19,6 @@ namespace McpUnity.Tools
     /// </summary>
     public class CollectProjectAssetsTool : McpToolBase
     {
-        public const string ScriptDocumentType = "script";
         public const string PrefabDocumentType = "prefab";
         public const string SceneDocumentType = "scene";
 
@@ -61,17 +59,44 @@ namespace McpUnity.Tools
 
             try
             {
-                if (!TryCollectDocuments(includeScenes, folders, out List<CollectedDocument> documents, out List<string> invalidFolders, out string errorMessage))
+                List<string> searchFolders = ResolveSearchFolders(folders, out List<string> invalidFolders);
+                if (searchFolders.Count == 0)
                 {
+                    string errorMessage = invalidFolders.Count > 0
+                        ? $"No valid folders found. Invalid: {string.Join(", ", invalidFolders)}"
+                        : "No valid folders found.";
                     EditorUtility.ClearProgressBar();
                     tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(errorMessage, "validation_error"));
                     yield break;
                 }
 
+                if (invalidFolders.Count > 0)
+                {
+                    McpLogger.LogWarning($"[Context Engine] Skipping invalid folders: {string.Join(", ", invalidFolders)}");
+                }
+
+                // Scripts: only collect paths — Node reads file contents directly from disk
+                List<string> scriptPaths = CollectScriptPaths(searchFolders);
+
+                // Prefabs & scenes: need Unity runtime to summarize, so send full documents
+                List<CollectedDocument> documents = new List<CollectedDocument>();
+                documents.AddRange(CollectPrefabs(searchFolders));
+
+                if (includeScenes)
+                {
+                    documents.AddRange(CollectScenes(searchFolders));
+                }
+
                 EditorUtility.DisplayProgressBar(
-                    "Context Engine — Uploading",
-                    $"Sending {documents.Count} documents to Context Engine for indexing...",
+                    "Context Engine — Preparing response",
+                    $"Collected {scriptPaths.Count} scripts, {documents.Count} prefabs/scenes",
                     1f);
+
+                var responseScriptPaths = new JArray();
+                foreach (string path in scriptPaths)
+                {
+                    responseScriptPaths.Add(path);
+                }
 
                 var responseDocuments = new JArray();
                 foreach (CollectedDocument document in documents)
@@ -82,6 +107,7 @@ namespace McpUnity.Tools
                 JObject response = new JObject
                 {
                     ["success"] = true,
+                    ["scriptPaths"] = responseScriptPaths,
                     ["documents"] = responseDocuments,
                 };
 
@@ -102,36 +128,6 @@ namespace McpUnity.Tools
                     "execution_error"
                 ));
             }
-        }
-
-        public static bool TryCollectDocuments(bool includeScenes, List<string> folders, out List<CollectedDocument> documents, out List<string> invalidFolders, out string errorMessage)
-        {
-            documents = new List<CollectedDocument>();
-            errorMessage = null;
-
-            List<string> searchFolders = ResolveSearchFolders(folders, out invalidFolders);
-            if (searchFolders.Count == 0)
-            {
-                errorMessage = invalidFolders.Count > 0
-                    ? $"No valid folders found. Invalid: {string.Join(", ", invalidFolders)}"
-                    : "No valid folders found.";
-                return false;
-            }
-
-            if (invalidFolders.Count > 0)
-            {
-                McpLogger.LogWarning($"[Context Engine] Skipping invalid folders: {string.Join(", ", invalidFolders)}");
-            }
-
-            documents.AddRange(CollectScripts(searchFolders));
-            documents.AddRange(CollectPrefabs(searchFolders));
-
-            if (includeScenes)
-            {
-                documents.AddRange(CollectScenes(searchFolders));
-            }
-
-            return true;
         }
 
         public static List<string> ResolveSearchFolders(List<string> folders, out List<string> invalidFolders)
@@ -164,9 +160,9 @@ namespace McpUnity.Tools
             return result;
         }
 
-        public static List<CollectedDocument> CollectScripts(List<string> searchFolders)
+        public static List<string> CollectScriptPaths(List<string> searchFolders)
         {
-            var documents = new List<CollectedDocument>();
+            var paths = new List<string>();
             var seen = new HashSet<string>();
             string[] guids = AssetDatabase.FindAssets("t:MonoScript", searchFolders.ToArray());
 
@@ -192,28 +188,10 @@ namespace McpUnity.Tools
                         (float)(i + 1) / guids.Length);
                 }
 
-                try
-                {
-                    string fileContents = File.ReadAllText(assetPath);
-                    if (string.IsNullOrWhiteSpace(fileContents))
-                    {
-                        continue;
-                    }
-
-                    documents.Add(new CollectedDocument
-                    {
-                        Type = ScriptDocumentType,
-                        Path = assetPath,
-                        Contents = $"// File: {assetPath}\n{fileContents}",
-                    });
-                }
-                catch (Exception ex)
-                {
-                    McpLogger.LogError($"[Context Engine] Failed to read script {assetPath}: {ex.Message}");
-                }
+                paths.Add(assetPath);
             }
 
-            return documents;
+            return paths;
         }
 
         public static List<CollectedDocument> CollectPrefabs(List<string> searchFolders)
