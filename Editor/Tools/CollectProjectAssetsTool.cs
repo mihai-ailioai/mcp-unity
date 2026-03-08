@@ -65,8 +65,9 @@ namespace McpUnity.Tools
             // Documents are accumulated until adding the next one would exceed MaxPayloadBytes.
             int offset = parameters["offset"]?.ToObject<int>() ?? 0;
 
-            // Always use editor settings — folders and scene inclusion are configured in the Context Engine tab
+            // Always use editor settings — folders and prefab/scene inclusion are configured in the Context Engine tab
             var settings = McpUnitySettings.Instance;
+            bool includePrefabs = settings.ContextEngineIndexPrefabs;
             bool includeScenes = settings.ContextEngineIndexScenes;
             List<string> folders = new List<string>(settings.ContextEngineIndexFolders);
 
@@ -95,9 +96,12 @@ namespace McpUnity.Tools
                     ? CollectScriptPaths(searchFolders)
                     : new List<string>();
 
-                // Discover all prefab/scene asset GUIDs to determine total count
+                // Discover prefab/scene asset GUIDs to determine total count
                 var assetGuids = new List<AssetGuidEntry>();
-                DiscoverPrefabGuids(searchFolders, assetGuids);
+                if (includePrefabs)
+                {
+                    DiscoverPrefabGuids(searchFolders, assetGuids);
+                }
                 if (includeScenes)
                 {
                     DiscoverSceneGuids(searchFolders, assetGuids);

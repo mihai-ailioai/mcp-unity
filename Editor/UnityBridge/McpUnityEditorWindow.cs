@@ -339,6 +339,17 @@ namespace McpUnity.Unity
             EditorGUILayout.LabelField("Configuration", _subHeaderStyle);
             EditorGUILayout.BeginVertical(_boxStyle);
             
+            // Include prefabs toggle
+            bool newIndexPrefabs = EditorGUILayout.Toggle(
+                new GUIContent("Include Prefabs", 
+                    "Include prefab hierarchy summaries (component types, child structure). Disable for faster scripts-only indexing."),
+                settings.ContextEngineIndexPrefabs);
+            if (newIndexPrefabs != settings.ContextEngineIndexPrefabs)
+            {
+                settings.ContextEngineIndexPrefabs = newIndexPrefabs;
+                settings.SaveSettings();
+            }
+            
             // Include scenes toggle
             bool newIndexScenes = EditorGUILayout.Toggle(
                 new GUIContent("Include Scenes", 
@@ -474,13 +485,16 @@ namespace McpUnity.Unity
             }
 
             int scriptCount = CollectProjectAssetsTool.CollectScriptPaths(searchFolders).Count;
-            int prefabCount = AssetDatabase.FindAssets("t:Prefab", searchFolders.ToArray()).Length;
+            int prefabCount = settings.ContextEngineIndexPrefabs
+                ? AssetDatabase.FindAssets("t:Prefab", searchFolders.ToArray()).Length
+                : 0;
             int sceneCount = settings.ContextEngineIndexScenes
                 ? AssetDatabase.FindAssets("t:SceneAsset", searchFolders.ToArray()).Length
                 : 0;
 
             EditorUtility.ClearProgressBar();
 
+            string prefabSummary = settings.ContextEngineIndexPrefabs ? $", {prefabCount} prefabs" : string.Empty;
             string sceneSummary = settings.ContextEngineIndexScenes ? $", {sceneCount} scenes" : string.Empty;
             string invalidSummary = invalidFolders.Count > 0
                 ? $"\n\nSkipped invalid folders: {string.Join(", ", invalidFolders)}"
@@ -488,7 +502,7 @@ namespace McpUnity.Unity
 
             EditorUtility.DisplayDialog(
                 "Context Engine",
-                $"Project has {scriptCount} scripts, {prefabCount} prefabs{sceneSummary} ready for indexing.\n\n" +
+                $"Project has {scriptCount} scripts{prefabSummary}{sceneSummary} ready for indexing.\n\n" +
                 "Use the 'index_project' MCP tool from your AI agent to index them." +
                 invalidSummary,
                 "OK");

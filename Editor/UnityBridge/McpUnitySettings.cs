@@ -41,6 +41,9 @@ namespace McpUnity.Unity
         [Tooltip("Folders under Assets/ to include in Context Engine indexing (e.g. 'Game/Scripts'). Empty list means all of Assets/.")]
         public System.Collections.Generic.List<string> ContextEngineIndexFolders = new System.Collections.Generic.List<string>();
         
+        [Tooltip("Whether to include prefab summaries when collecting Context Engine documents (hierarchy + component types). Disable for faster indexing of scripts only.")]
+        public bool ContextEngineIndexPrefabs = true;
+        
         [Tooltip("Whether to include scene files when collecting Context Engine documents (can be slow for large scenes).")]
         public bool ContextEngineIndexScenes = false;
         
