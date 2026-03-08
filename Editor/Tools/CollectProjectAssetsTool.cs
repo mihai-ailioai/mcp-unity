@@ -63,9 +63,15 @@ namespace McpUnity.Tools
             {
                 if (!TryCollectDocuments(includeScenes, folders, out List<CollectedDocument> documents, out List<string> invalidFolders, out string errorMessage))
                 {
+                    EditorUtility.ClearProgressBar();
                     tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(errorMessage, "validation_error"));
                     yield break;
                 }
+
+                EditorUtility.DisplayProgressBar(
+                    "Context Engine — Uploading",
+                    $"Sending {documents.Count} documents to Context Engine for indexing...",
+                    1f);
 
                 var responseDocuments = new JArray();
                 foreach (CollectedDocument document in documents)
@@ -84,10 +90,12 @@ namespace McpUnity.Tools
                     response["message"] = $"Skipped invalid folders: {string.Join(", ", invalidFolders)}";
                 }
 
+                EditorUtility.ClearProgressBar();
                 tcs.SetResult(response);
             }
             catch (Exception ex)
             {
+                EditorUtility.ClearProgressBar();
                 McpLogger.LogError($"[Context Engine] Failed to collect project assets: {ex.Message}");
                 tcs.SetResult(McpUnitySocketHandler.CreateErrorResponse(
                     $"Failed to collect project assets: {ex.Message}",
@@ -162,8 +170,9 @@ namespace McpUnity.Tools
             var seen = new HashSet<string>();
             string[] guids = AssetDatabase.FindAssets("t:MonoScript", searchFolders.ToArray());
 
-            foreach (string guid in guids)
+            for (int i = 0; i < guids.Length; i++)
             {
+                string guid = guids[i];
                 if (!seen.Add(guid))
                 {
                     continue;
@@ -173,6 +182,14 @@ namespace McpUnity.Tools
                 if (!assetPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
+                }
+
+                if (i % 50 == 0)
+                {
+                    EditorUtility.DisplayProgressBar(
+                        "Context Engine — Collecting Scripts",
+                        $"{assetPath}  ({i + 1}/{guids.Length})",
+                        (float)(i + 1) / guids.Length);
                 }
 
                 try
@@ -205,14 +222,20 @@ namespace McpUnity.Tools
             var seen = new HashSet<string>();
             string[] guids = AssetDatabase.FindAssets("t:Prefab", searchFolders.ToArray());
 
-            foreach (string guid in guids)
+            for (int i = 0; i < guids.Length; i++)
             {
+                string guid = guids[i];
                 if (!seen.Add(guid))
                 {
                     continue;
                 }
 
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+
+                EditorUtility.DisplayProgressBar(
+                    "Context Engine — Collecting Prefabs",
+                    $"{assetPath}  ({i + 1}/{guids.Length})",
+                    (float)(i + 1) / guids.Length);
 
                 try
                 {
@@ -252,8 +275,9 @@ namespace McpUnity.Tools
             var seen = new HashSet<string>();
             string[] guids = AssetDatabase.FindAssets("t:SceneAsset", searchFolders.ToArray());
 
-            foreach (string guid in guids)
+            for (int i = 0; i < guids.Length; i++)
             {
+                string guid = guids[i];
                 if (!seen.Add(guid))
                 {
                     continue;
@@ -262,6 +286,11 @@ namespace McpUnity.Tools
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 var scene = default(UnityEngine.SceneManagement.Scene);
                 bool sceneOpened = false;
+
+                EditorUtility.DisplayProgressBar(
+                    "Context Engine — Collecting Scenes",
+                    $"{assetPath}  ({i + 1}/{guids.Length})",
+                    (float)(i + 1) / guids.Length);
 
                 try
                 {
