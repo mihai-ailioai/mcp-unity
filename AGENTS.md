@@ -116,13 +116,16 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - **Schema compatibility across clients**: avoid reusing the same nested Zod object instance for multiple sibling fields (for example `position`, `rotation`, `scale`). Some MCP clients fail on local refs like `#/properties/position`; prefer creating a fresh nested schema per field.
 
 ### Context Engine integration (semantic search)
-- **What it does**: Collects project scripts, prefabs, and optionally scenes into documents for Augment's Context Engine.
-- **Flow**: Unity collects documents through `collect_project_assets`; the Node MCP server performs indexing/search.
+- **What it does**: Indexes project scripts, prefabs, and optionally scenes using the [Augment Context Engine SDK](https://docs.augmentcode.com/context-services/sdk/overview) for semantic search by AI agents.
+- **Architecture**: Unity collects asset documents via `collect_project_assets` and sends them to the Node MCP server, which indexes them via `DirectContext` from `@augmentcode/auggie-sdk`. Search is handled by the `search_project` MCP tool.
+- **Authentication**: Requires `auggie login` (stores session at `~/.augment/session.json`). Auto-detected by the SDK.
+- **Incremental indexing**: The SDK automatically skips unchanged files. State is persisted to `ProjectSettings/.augment-context-state.json`.
+- **Trigger**: Manual — AI agent calls the `index_project` MCP tool, or from the Context Engine tab in the MCP Unity editor window.
 - **Editor window**: The `Context Engine` tab shows auth status from `~/.augment/session.json`, folder/scope settings, and a dry-run preview button that tells users to run `index_project` from their AI agent.
 - **Document shape**: Unity returns `{ path, contents }` documents where `path` is the Unity asset path and `contents` is full file text or compact JSON summaries.
 - **Content**: Full `.cs` source for scripts, summary JSON (via `GameObjectToSummaryJObject`) for prefabs/scenes.
 - **Settings** (in `McpUnitySettings`): `ContextEngineIndexFolders`, `ContextEngineIndexScenes`, `ContextEngineLastIndexedTimestamp`.
-- **Implementation**: `Editor/Tools/CollectProjectAssetsTool.cs` handles folder resolution and asset collection; `Server~/src/tools/indexProjectTool.ts` requests those documents and indexes them.
+- **Implementation**: `Editor/Tools/CollectProjectAssetsTool.cs` handles folder resolution and asset collection; `Server~/src/services/contextEngine.ts` wraps the SDK; `Server~/src/tools/indexProjectTool.ts` orchestrates collection + indexing; `Server~/src/tools/searchProjectTool.ts` handles search queries.
 
 ### Release/version bump checklist
 - Update versions consistently:
@@ -180,6 +183,8 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `control_editor` — Control Unity play mode state (play, pause, unpause, stop, step) with automatic domain reload handling
 - `get_editor_state` — Get editor state snapshot (play mode, compilation status, active scene, build platform, Unity version)
 - `collect_project_assets` — Collect project scripts, prefabs, and optional scenes as `{ path, contents }` documents for Context Engine indexing
+- `index_project` — Index Unity project assets for semantic search via Augment Context Engine (collects from Unity, indexes on Node side)
+- `search_project` — Semantic search over indexed Unity project assets (scripts, prefabs, scenes)
 
 ### Available resources (current)
 - `unity://menu-items` — List of available menu items
