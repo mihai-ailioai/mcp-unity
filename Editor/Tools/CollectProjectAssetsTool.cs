@@ -52,8 +52,14 @@ namespace McpUnity.Tools
 
         private static IEnumerator ExecuteCollectCoroutine(JObject parameters, TaskCompletionSource<JObject> tcs)
         {
-            bool includeScenes = parameters?["includeScenes"]?.ToObject<bool?>() ?? false;
+            // Use editor settings as defaults when params are not provided
+            var settings = McpUnitySettings.Instance;
+            bool includeScenes = parameters?["includeScenes"]?.ToObject<bool?>() ?? settings.ContextEngineIndexScenes;
             List<string> folders = ParseFolders(parameters?["folders"] as JArray);
+            if (folders.Count == 0 && settings.ContextEngineIndexFolders.Count > 0)
+            {
+                folders = new List<string>(settings.ContextEngineIndexFolders);
+            }
 
             yield return null;
 
