@@ -107,10 +107,12 @@ function resolveDiskPath(assetPath, packagePathMap) {
 }
 /**
  * Reads a slice of script paths from disk and returns documents.
- * Skips empty files and logs errors for unreadable files.
+ * Skips empty files and tracks errors for unreadable files.
  */
 function readScriptBatch(scriptPaths, startIdx, endIdx, projectRoot, logger, packagePathMap = {}) {
     const docs = [];
+    let readErrors = 0;
+    const firstErrors = [];
     for (let i = startIdx; i < endIdx; i++) {
         const scriptPath = scriptPaths[i];
         try {
@@ -125,10 +127,14 @@ function readScriptBatch(scriptPaths, startIdx, endIdx, projectRoot, logger, pac
             }
         }
         catch (err) {
+            readErrors++;
+            if (firstErrors.length < 5) {
+                firstErrors.push(`${scriptPath}: ${err.message}`);
+            }
             logger.error(`Failed to read script ${scriptPath}: ${err.message}`);
         }
     }
-    return docs;
+    return { docs, readErrors, firstErrors };
 }
 // ── Early-return helper ────────────────────────────────────────────────
 function earlyReturn(totalScripts, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime) {
@@ -234,14 +240,20 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     }
     // ── Phase 1: Index scripts in batches (read from disk on demand) ──
     let totalScriptsRead = 0;
+    let totalScriptReadErrors = 0;
+    const sampleErrors = [];
     while (scriptsIndexedCount < scriptPaths.length) {
         if (isNearDeadline()) {
             logger.info('Approaching time limit during script indexing');
             return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
         }
         const batchEnd = Math.min(scriptsIndexedCount + BATCH_SIZE, scriptPaths.length);
-        const batch = readScriptBatch(scriptPaths, scriptsIndexedCount, batchEnd, unityProjectRoot, logger, packagePathMap);
-        totalScriptsRead += batch.length;
+        const batchResult = readScriptBatch(scriptPaths, scriptsIndexedCount, batchEnd, unityProjectRoot, logger, packagePathMap);
+        totalScriptsRead += batchResult.docs.length;
+        totalScriptReadErrors += batchResult.readErrors;
+        if (sampleErrors.length < 5) {
+            sampleErrors.push(...batchResult.firstErrors.slice(0, 5 - sampleErrors.length));
+        }
         const isLastScriptBatch = batchEnd >= scriptPaths.length;
         // Only finalize if this is both the last script batch AND all prefabs are done
         const isLastOverall = isLastScriptBatch && unityOffset >= totalUnityDocuments;
@@ -250,8 +262,8 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         const msg = `Indexing scripts batch ${batchNum}/${totalBatches} (${scriptsIndexedCount}/${scriptPaths.length})...`;
         logger.info(msg);
         await sendProgress(extra, scriptsIndexedCount, scriptPaths.length + totalUnityDocuments, msg, logger);
-        if (batch.length > 0) {
-            accumulateStats(await contextEngine.indexBatch(batch, isLastOverall));
+        if (batchResult.docs.length > 0) {
+            accumulateStats(await contextEngine.indexBatch(batchResult.docs, isLastOverall));
         }
         scriptsIndexedCount = batchEnd;
         // Update checkpoint
@@ -309,11 +321,23 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     // ── Done ──────────────────────────────────────────────────────────
     deleteCheckpoint(logger);
     const indexedPaths = contextEngine.getIndexedPaths();
-    const summary = formatSummary(scriptPaths.length, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
+    let summary = formatSummary(scriptPaths.length, totalUnityDocsIndexed, indexedPaths.length, stats, isResume);
+    if (totalScriptReadErrors > 0) {
+        summary += `\n\nWarning: ${totalScriptReadErrors} scripts could not be read from disk.`;
+        if (sampleErrors.length > 0) {
+            summary += `\nSample errors:\n${sampleErrors.map(e => `  - ${e}`).join('\n')}`;
+        }
+    }
+    // Log package path map for diagnostics
+    const mapEntries = Object.entries(packagePathMap);
+    if (mapEntries.length > 0) {
+        summary += `\n\nPackage path mappings: ${mapEntries.map(([k, v]) => `${k} -> ${v}`).join(', ')}`;
+    }
     await sendProgress(extra, scriptPaths.length + totalUnityDocuments, scriptPaths.length + totalUnityDocuments, summary, logger);
     logger.info('Completed project indexing run', {
         scriptPaths: scriptPaths.length,
         scriptsReadThisRun: totalScriptsRead,
+        scriptReadErrors: totalScriptReadErrors,
         unityDocumentCount: totalUnityDocsIndexed,
         indexedPathCount: indexedPaths.length,
         ...stats,
