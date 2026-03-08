@@ -3,6 +3,7 @@ import { DirectContext } from '@augmentcode/auggie-sdk';
 import { Logger } from '../utils/logger.js';
 const STATE_FILE_PATH = path.resolve(process.cwd(), 'ProjectSettings/.augment-context-state.json');
 const BATCH_SIZE = 100;
+export { BATCH_SIZE };
 export class ContextEngineService {
     logger = new Logger('ContextEngine');
     context = null;
@@ -52,6 +53,31 @@ export class ContextEngineService {
         await context.waitForIndexing();
         this.logger.info(`Persisting context engine state to ${STATE_FILE_PATH}`);
         await context.exportToFile(STATE_FILE_PATH);
+    }
+    /**
+     * Clear the index. Called once at the start of a fresh indexing run.
+     */
+    async clearIndex() {
+        const context = this.requireContext();
+        this.logger.info('Clearing previous index');
+        await context.clearIndex();
+    }
+    /**
+     * Index a single batch of documents. Used by checkpoint-based resumable indexing.
+     * @param batch The documents to index in this batch.
+     * @param isLastBatch If true, waits for indexing to complete and persists state.
+     */
+    async indexBatch(batch, isLastBatch) {
+        const context = this.requireContext();
+        await context.addToIndex(batch, {
+            waitForIndexing: isLastBatch,
+        });
+        if (isLastBatch) {
+            this.logger.info('Waiting for context engine indexing to finish');
+            await context.waitForIndexing();
+            this.logger.info(`Persisting context engine state to ${STATE_FILE_PATH}`);
+            await context.exportToFile(STATE_FILE_PATH);
+        }
     }
     async search(query) {
         const context = this.requireContext();

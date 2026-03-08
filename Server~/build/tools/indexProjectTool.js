@@ -1,15 +1,48 @@
 import * as z from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
+import { BATCH_SIZE } from '../services/contextEngine.js';
 import { McpUnityError, ErrorType } from '../utils/errors.js';
 const toolName = 'index_project';
-const toolDescription = 'Collects project assets from Unity and indexes them into the local project context engine.';
+const toolDescription = 'Indexes project assets into the context engine for semantic search. Supports automatic resume if a previous run was interrupted.';
 const paramsSchema = z.object({});
-/**
- * Helper to send MCP progress notifications.
- * If the client provided a progressToken, sends notifications/progress to keep the
- * connection alive and report status. Silently no-ops when no token is available.
- */
+// ── Checkpoint persistence ──────────────────────────────────────────────
+const CHECKPOINT_PATH = path.resolve(process.cwd(), 'ProjectSettings/.context-engine-index-checkpoint.json');
+function loadCheckpoint(logger) {
+    try {
+        if (!fs.existsSync(CHECKPOINT_PATH))
+            return null;
+        const raw = fs.readFileSync(CHECKPOINT_PATH, 'utf-8');
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data.documents) || typeof data.indexedCount !== 'number')
+            return null;
+        logger.info(`Loaded checkpoint: ${data.indexedCount}/${data.documents.length} documents already indexed`);
+        return data;
+    }
+    catch {
+        return null;
+    }
+}
+function saveCheckpoint(checkpoint, logger) {
+    try {
+        fs.writeFileSync(CHECKPOINT_PATH, JSON.stringify(checkpoint), 'utf-8');
+    }
+    catch (err) {
+        logger.error(`Failed to save checkpoint: ${err.message}`);
+    }
+}
+function deleteCheckpoint(logger) {
+    try {
+        if (fs.existsSync(CHECKPOINT_PATH)) {
+            fs.unlinkSync(CHECKPOINT_PATH);
+            logger.info('Deleted indexing checkpoint');
+        }
+    }
+    catch (err) {
+        logger.error(`Failed to delete checkpoint: ${err.message}`);
+    }
+}
+// ── Progress notification helper ────────────────────────────────────────
 async function sendProgress(extra, progress, total, message, logger) {
     const progressToken = extra?._meta?.progressToken;
     if (!progressToken || !extra.sendNotification)
@@ -17,19 +50,14 @@ async function sendProgress(extra, progress, total, message, logger) {
     try {
         await extra.sendNotification({
             method: 'notifications/progress',
-            params: {
-                progressToken,
-                progress,
-                total,
-                message,
-            },
+            params: { progressToken, progress, total, message },
         });
     }
     catch (err) {
-        // Progress notifications are best-effort; don't fail the tool
         logger.error(`Failed to send progress notification: ${err.message}`);
     }
 }
+// ── Tool registration ───────────────────────────────────────────────────
 export function registerIndexProjectTool(server, mcpUnity, contextEngine, logger) {
     logger.info(`Registering tool: ${toolName}`);
     server.tool(toolName, toolDescription, paramsSchema.shape, async (params, extra) => {
@@ -45,6 +73,7 @@ export function registerIndexProjectTool(server, mcpUnity, contextEngine, logger
         }
     });
 }
+// ── Core handler ────────────────────────────────────────────────────────
 async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     const parsed = paramsSchema.safeParse(rawParams);
     if (!parsed.success) {
@@ -53,71 +82,89 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     if (!contextEngine.isInitialized) {
         throw new McpUnityError(ErrorType.INTERNAL, 'Context engine is not initialized');
     }
-    // Use 4 phases for progress: collect, read scripts, index, done
-    const TOTAL_PHASES = 4;
-    // Phase 1: Collect asset paths from Unity
-    await sendProgress(extra, 1, TOTAL_PHASES, 'Collecting project assets from Unity...', logger);
-    // Folders and includeScenes are configured in the Unity editor Context Engine tab
-    const response = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: {} }, { timeout: 300000 }));
-    if (!response.success) {
-        throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || 'Failed to collect project assets');
+    // ── Try to resume from checkpoint ─────────────────────────────────
+    const checkpoint = loadCheckpoint(logger);
+    let allDocuments;
+    let startOffset;
+    let isResume;
+    if (checkpoint && checkpoint.documents.length > 0 && checkpoint.indexedCount < checkpoint.documents.length) {
+        // Resume from checkpoint
+        allDocuments = checkpoint.documents;
+        startOffset = checkpoint.indexedCount;
+        isResume = true;
+        logger.info(`Resuming indexing from checkpoint: ${startOffset}/${allDocuments.length} already indexed`);
+        await sendProgress(extra, startOffset, allDocuments.length, `Resuming indexing from checkpoint (${startOffset}/${allDocuments.length} already indexed)...`, logger);
     }
-    // CWD is the Unity project root (set by the launcher wrapper script)
-    const unityProjectRoot = process.cwd();
-    // Phase 2: Read script contents from disk
-    const scriptPaths = response.scriptPaths ?? [];
-    const scriptDocuments = [];
-    await sendProgress(extra, 2, TOTAL_PHASES, `Reading ${scriptPaths.length} scripts from disk...`, logger);
-    logger.info(`Reading ${scriptPaths.length} scripts from disk (project root: ${unityProjectRoot})`);
-    for (const scriptPath of scriptPaths) {
-        try {
-            const fullPath = path.resolve(unityProjectRoot, scriptPath);
-            const fileContents = fs.readFileSync(fullPath, 'utf-8');
-            if (fileContents.trim().length > 0) {
-                scriptDocuments.push({
-                    path: scriptPath,
-                    contents: `// File: ${scriptPath}\n${fileContents}`,
-                });
+    else {
+        // Fresh run — collect and prepare all documents
+        isResume = false;
+        startOffset = 0;
+        await sendProgress(extra, 0, 1, 'Collecting project assets from Unity...', logger);
+        const response = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: {} }, { timeout: 300000 }));
+        if (!response.success) {
+            throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || 'Failed to collect project assets');
+        }
+        // Read script contents from disk (Unity only sends paths)
+        const unityProjectRoot = process.cwd();
+        const scriptPaths = response.scriptPaths ?? [];
+        const scriptDocuments = [];
+        logger.info(`Reading ${scriptPaths.length} scripts from disk (project root: ${unityProjectRoot})`);
+        for (const scriptPath of scriptPaths) {
+            try {
+                const fullPath = path.resolve(unityProjectRoot, scriptPath);
+                const fileContents = fs.readFileSync(fullPath, 'utf-8');
+                if (fileContents.trim().length > 0) {
+                    scriptDocuments.push({
+                        path: scriptPath,
+                        contents: `// File: ${scriptPath}\n${fileContents}`,
+                    });
+                }
+            }
+            catch (err) {
+                logger.error(`Failed to read script ${scriptPath}: ${err.message}`);
             }
         }
-        catch (err) {
-            logger.error(`Failed to read script ${scriptPath} (resolved: ${path.resolve(unityProjectRoot, scriptPath)}): ${err.message}`);
+        logger.info(`Successfully read ${scriptDocuments.length}/${scriptPaths.length} scripts from disk`);
+        const unityDocuments = response.documents ?? [];
+        allDocuments = [...scriptDocuments, ...unityDocuments];
+        if (allDocuments.length === 0) {
+            deleteCheckpoint(logger);
+            return {
+                content: [{ type: 'text', text: 'No assets found to index.' }],
+            };
         }
+        // Clear index once at the start of a fresh run
+        await contextEngine.clearIndex();
+        // Save initial checkpoint so we can resume if interrupted during indexing
+        saveCheckpoint({ documents: allDocuments, indexedCount: 0, cleared: true }, logger);
     }
-    logger.info(`Successfully read ${scriptDocuments.length}/${scriptPaths.length} scripts from disk`);
-    // Prefab/scene documents come with contents from Unity (they need runtime summarization)
-    const unityDocuments = response.documents ?? [];
-    const allDocuments = [...scriptDocuments, ...unityDocuments];
-    if (allDocuments.length === 0) {
-        logger.info('No documents found for indexing');
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: 'No assets found',
-                },
-            ],
-        };
+    // ── Batch indexing with checkpoint updates ────────────────────────
+    const totalDocs = allDocuments.length;
+    const totalBatches = Math.ceil((totalDocs - startOffset) / BATCH_SIZE);
+    let batchesDone = 0;
+    for (let offset = startOffset; offset < totalDocs; offset += BATCH_SIZE) {
+        const batch = allDocuments.slice(offset, offset + BATCH_SIZE);
+        const isLastBatch = offset + BATCH_SIZE >= totalDocs;
+        batchesDone++;
+        const progressMsg = `Indexing batch ${batchesDone}/${totalBatches} (${offset + batch.length}/${totalDocs} documents)...`;
+        logger.info(progressMsg);
+        await sendProgress(extra, offset + batch.length, totalDocs, progressMsg, logger);
+        await contextEngine.indexBatch(batch, isLastBatch);
+        // Update checkpoint after each batch so we can resume from here
+        saveCheckpoint({ documents: allDocuments, indexedCount: offset + batch.length, cleared: true }, logger);
     }
-    // Phase 3: Index documents into context engine
-    await sendProgress(extra, 3, TOTAL_PHASES, `Indexing ${allDocuments.length} documents (${scriptDocuments.length} scripts, ${unityDocuments.length} prefabs/scenes)...`, logger);
-    await contextEngine.indexDocuments(allDocuments);
-    // Phase 4: Done
+    // ── Done — clean up checkpoint ────────────────────────────────────
+    deleteCheckpoint(logger);
     const indexedPaths = contextEngine.getIndexedPaths();
-    const summary = `Indexed ${allDocuments.length} documents (${scriptDocuments.length} scripts read from disk, ${unityDocuments.length} prefabs/scenes from Unity). Context engine now tracks ${indexedPaths.length} paths.`;
-    await sendProgress(extra, 4, TOTAL_PHASES, summary, logger);
+    const resumeNote = isResume ? ' (resumed from checkpoint)' : '';
+    const summary = `Indexed ${totalDocs} documents${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
+    await sendProgress(extra, totalDocs, totalDocs, summary, logger);
     logger.info('Completed project indexing run', {
-        scriptCount: scriptDocuments.length,
-        unityDocumentCount: unityDocuments.length,
-        totalIndexed: allDocuments.length,
+        totalIndexed: totalDocs,
         indexedPathCount: indexedPaths.length,
+        resumed: isResume,
     });
     return {
-        content: [
-            {
-                type: 'text',
-                text: summary,
-            },
-        ],
+        content: [{ type: 'text', text: summary }],
     };
 }
