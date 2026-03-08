@@ -318,7 +318,16 @@ namespace McpUnity.Tools
 
             if (folders == null || folders.Count == 0)
             {
+                // Default: index both Assets and all local/embedded packages
                 result.Add("Assets");
+                // Add Packages/ subfolders that are valid (local/embedded packages)
+                foreach (string packageFolder in GetLocalPackageFolders())
+                {
+                    if (!result.Contains(packageFolder))
+                    {
+                        result.Add(packageFolder);
+                    }
+                }
                 return result;
             }
 
@@ -335,6 +344,31 @@ namespace McpUnity.Tools
                 else
                 {
                     invalidFolders.Add(resolved);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Discovers local/embedded package folders under Packages/ that Unity recognizes.
+        /// These are packages with a physical folder on disk (not registry/git packages in Library/PackageCache).
+        /// </summary>
+        private static List<string> GetLocalPackageFolders()
+        {
+            var result = new List<string>();
+            string packagesPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages");
+
+            if (!System.IO.Directory.Exists(packagesPath))
+                return result;
+
+            foreach (string dir in System.IO.Directory.GetDirectories(packagesPath))
+            {
+                string folderName = System.IO.Path.GetFileName(dir);
+                string assetDbPath = $"Packages/{folderName}";
+                if (AssetDatabase.IsValidFolder(assetDbPath))
+                {
+                    result.Add(assetDbPath);
                 }
             }
 
@@ -394,6 +428,13 @@ namespace McpUnity.Tools
             }
 
             if (trimmed.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed;
+            }
+
+            // Support Packages/ paths for local/embedded packages
+            if (trimmed.Equals("Packages", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
             {
                 return trimmed;
             }
