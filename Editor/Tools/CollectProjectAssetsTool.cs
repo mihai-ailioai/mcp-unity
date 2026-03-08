@@ -177,6 +177,21 @@ namespace McpUnity.Tools
                     responseDocuments.Add(document.ToResponseJObject());
                 }
 
+                // Build package path map: AssetDatabase path -> disk folder name
+                // e.g. "Packages/com.evlppy.core" -> "Packages/Core-Module"
+                var packagePathMap = new JObject();
+                foreach (string sf in searchFolders)
+                {
+                    if (sf.StartsWith("Packages/", StringComparison.Ordinal))
+                    {
+                        string diskPath = ResolveToDiskPath(sf);
+                        if (diskPath != null && diskPath != sf)
+                        {
+                            packagePathMap[sf] = diskPath;
+                        }
+                    }
+                }
+
                 JObject response = new JObject
                 {
                     ["success"] = true,
@@ -185,6 +200,7 @@ namespace McpUnity.Tools
                     ["totalDocuments"] = totalDocuments,
                     ["offset"] = offset,
                     ["nextOffset"] = nextOffset,
+                    ["packagePathMap"] = packagePathMap,
                 };
 
                 if (invalidFolders.Count > 0)
@@ -479,6 +495,53 @@ namespace McpUnity.Tools
             }
 
             return $"Assets/{trimmed}";
+        }
+
+        /// <summary>
+        /// Maps an AssetDatabase package path (e.g. "Packages/com.evlppy.core") to the actual
+        /// disk-relative path (e.g. "Packages/Core-Module"). Returns null if not resolvable.
+        /// Uses the GetLocalPackageFolders discovery logic in reverse: scans Packages/ subdirs,
+        /// reads package.json name, and matches against the assetDbPath.
+        /// </summary>
+        private static string ResolveToDiskPath(string assetDbPath)
+        {
+            // assetDbPath is like "Packages/com.evlppy.core"
+            string packageName = assetDbPath.StartsWith("Packages/", StringComparison.Ordinal)
+                ? assetDbPath.Substring("Packages/".Length)
+                : null;
+
+            if (string.IsNullOrEmpty(packageName))
+                return null;
+
+            string packagesPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages");
+            if (!System.IO.Directory.Exists(packagesPath))
+                return null;
+
+            foreach (string dir in System.IO.Directory.GetDirectories(packagesPath))
+            {
+                string packageJsonPath = System.IO.Path.Combine(dir, "package.json");
+                if (!System.IO.File.Exists(packageJsonPath))
+                    continue;
+
+                try
+                {
+                    string json = System.IO.File.ReadAllText(packageJsonPath);
+                    var packageJson = JObject.Parse(json);
+                    string name = packageJson["name"]?.ToString();
+
+                    if (name == packageName)
+                    {
+                        string folderName = System.IO.Path.GetFileName(dir);
+                        return $"Packages/{folderName}";
+                    }
+                }
+                catch
+                {
+                    // Skip unreadable package.json files
+                }
+            }
+
+            return null;
         }
     }
 }

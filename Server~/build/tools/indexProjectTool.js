@@ -94,15 +94,28 @@ export function registerIndexProjectTool(server, mcpUnity, contextEngine, logger
 }
 // ── Script reading helper ──────────────────────────────────────────────
 /**
+ * Resolves a Unity AssetDatabase path to an actual disk path using the package path map.
+ * E.g. "Packages/com.evlppy.core/Runtime/Foo.cs" -> "Packages/Core-Module/Runtime/Foo.cs"
+ */
+function resolveDiskPath(assetPath, packagePathMap) {
+    for (const [assetDbPrefix, diskPrefix] of Object.entries(packagePathMap)) {
+        if (assetPath.startsWith(assetDbPrefix + '/')) {
+            return diskPrefix + assetPath.substring(assetDbPrefix.length);
+        }
+    }
+    return assetPath;
+}
+/**
  * Reads a slice of script paths from disk and returns documents.
  * Skips empty files and logs errors for unreadable files.
  */
-function readScriptBatch(scriptPaths, startIdx, endIdx, projectRoot, logger) {
+function readScriptBatch(scriptPaths, startIdx, endIdx, projectRoot, logger, packagePathMap = {}) {
     const docs = [];
     for (let i = startIdx; i < endIdx; i++) {
         const scriptPath = scriptPaths[i];
         try {
-            const fullPath = path.resolve(projectRoot, scriptPath);
+            const diskRelative = resolveDiskPath(scriptPath, packagePathMap);
+            const fullPath = path.resolve(projectRoot, diskRelative);
             const fileContents = fs.readFileSync(fullPath, 'utf-8');
             if (fileContents.trim().length > 0) {
                 docs.push({
@@ -167,11 +180,13 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     let scriptsIndexedCount;
     let totalUnityDocuments;
     let unityOffset;
+    let packagePathMap = {};
     if (checkpoint) {
         scriptPaths = checkpoint.scriptPaths;
         scriptsIndexedCount = checkpoint.scriptsIndexedCount;
         totalUnityDocuments = checkpoint.totalUnityDocuments;
         unityOffset = checkpoint.collectedUnityDocuments;
+        packagePathMap = checkpoint.packagePathMap ?? {};
         logger.info(`Resuming: ${scriptsIndexedCount}/${scriptPaths.length} scripts, ${unityOffset}/${totalUnityDocuments} Unity docs`);
         await sendProgress(extra, scriptsIndexedCount + unityOffset, scriptPaths.length + totalUnityDocuments, `Resuming from checkpoint...`, logger);
     }
@@ -184,6 +199,11 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         }
         totalUnityDocuments = firstPage.totalDocuments ?? (firstPage.documents?.length ?? 0);
         scriptPaths = firstPage.scriptPaths ?? [];
+        packagePathMap = firstPage.packagePathMap ?? {};
+        const mapEntries = Object.entries(packagePathMap);
+        if (mapEntries.length > 0) {
+            logger.info(`Package path map: ${mapEntries.map(([k, v]) => `${k} -> ${v}`).join(', ')}`);
+        }
         logger.info(`Received ${scriptPaths.length} script paths from Unity`);
         // Clear index once at the start of a fresh run
         await contextEngine.clearIndex();
@@ -204,6 +224,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             totalUnityDocuments,
             collectedUnityDocuments: unityOffset,
             cleared: true,
+            packagePathMap,
         }, logger);
         // Check deadline after collection + first page indexing
         if (isNearDeadline()) {
@@ -219,7 +240,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
         }
         const batchEnd = Math.min(scriptsIndexedCount + BATCH_SIZE, scriptPaths.length);
-        const batch = readScriptBatch(scriptPaths, scriptsIndexedCount, batchEnd, unityProjectRoot, logger);
+        const batch = readScriptBatch(scriptPaths, scriptsIndexedCount, batchEnd, unityProjectRoot, logger, packagePathMap);
         totalScriptsRead += batch.length;
         const isLastScriptBatch = batchEnd >= scriptPaths.length;
         // Only finalize if this is both the last script batch AND all prefabs are done
@@ -240,6 +261,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             totalUnityDocuments,
             collectedUnityDocuments: unityOffset,
             cleared: true,
+            packagePathMap,
         }, logger);
     }
     logger.info(`Script indexing complete: ${totalScriptsRead} non-empty scripts read from ${scriptPaths.length} paths`);
@@ -281,6 +303,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             totalUnityDocuments,
             collectedUnityDocuments: unityOffset,
             cleared: true,
+            packagePathMap,
         }, logger);
     }
     // ── Done ──────────────────────────────────────────────────────────

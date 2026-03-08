@@ -32,6 +32,8 @@ type CollectProjectAssetsResponse = {
   offset?: number;
   nextOffset?: number;
   message?: string;
+  /** Maps AssetDatabase package paths to disk-relative paths, e.g. "Packages/com.evlppy.core" -> "Packages/Core-Module" */
+  packagePathMap?: Record<string, string>;
 };
 
 // ── Checkpoint persistence ──────────────────────────────────────────────
@@ -49,6 +51,8 @@ interface IndexCheckpoint {
   collectedUnityDocuments: number;
   /** Whether the context engine index was cleared at the start of this run. */
   cleared: boolean;
+  /** Maps AssetDatabase package paths to disk-relative paths for script reading. */
+  packagePathMap?: Record<string, string>;
 }
 
 function loadCheckpoint(logger: Logger): IndexCheckpoint | null {
@@ -142,6 +146,19 @@ export function registerIndexProjectTool(
 // ── Script reading helper ──────────────────────────────────────────────
 
 /**
+ * Resolves a Unity AssetDatabase path to an actual disk path using the package path map.
+ * E.g. "Packages/com.evlppy.core/Runtime/Foo.cs" -> "Packages/Core-Module/Runtime/Foo.cs"
+ */
+function resolveDiskPath(assetPath: string, packagePathMap: Record<string, string>): string {
+  for (const [assetDbPrefix, diskPrefix] of Object.entries(packagePathMap)) {
+    if (assetPath.startsWith(assetDbPrefix + '/')) {
+      return diskPrefix + assetPath.substring(assetDbPrefix.length);
+    }
+  }
+  return assetPath;
+}
+
+/**
  * Reads a slice of script paths from disk and returns documents.
  * Skips empty files and logs errors for unreadable files.
  */
@@ -150,13 +167,15 @@ function readScriptBatch(
   startIdx: number,
   endIdx: number,
   projectRoot: string,
-  logger: Logger
+  logger: Logger,
+  packagePathMap: Record<string, string> = {}
 ): Array<{ path: string; contents: string }> {
   const docs: Array<{ path: string; contents: string }> = [];
   for (let i = startIdx; i < endIdx; i++) {
     const scriptPath = scriptPaths[i];
     try {
-      const fullPath = path.resolve(projectRoot, scriptPath);
+      const diskRelative = resolveDiskPath(scriptPath, packagePathMap);
+      const fullPath = path.resolve(projectRoot, diskRelative);
       const fileContents = fs.readFileSync(fullPath, 'utf-8');
       if (fileContents.trim().length > 0) {
         docs.push({
@@ -249,12 +268,14 @@ async function toolHandler(
   let scriptsIndexedCount: number;
   let totalUnityDocuments: number;
   let unityOffset: number;
+  let packagePathMap: Record<string, string> = {};
 
   if (checkpoint) {
     scriptPaths = checkpoint.scriptPaths;
     scriptsIndexedCount = checkpoint.scriptsIndexedCount;
     totalUnityDocuments = checkpoint.totalUnityDocuments;
     unityOffset = checkpoint.collectedUnityDocuments;
+    packagePathMap = checkpoint.packagePathMap ?? {};
 
     logger.info(`Resuming: ${scriptsIndexedCount}/${scriptPaths.length} scripts, ${unityOffset}/${totalUnityDocuments} Unity docs`);
     await sendProgress(extra, scriptsIndexedCount + unityOffset, scriptPaths.length + totalUnityDocuments,
@@ -274,7 +295,12 @@ async function toolHandler(
 
     totalUnityDocuments = firstPage.totalDocuments ?? (firstPage.documents?.length ?? 0);
     scriptPaths = firstPage.scriptPaths ?? [];
+    packagePathMap = firstPage.packagePathMap ?? {};
 
+    const mapEntries = Object.entries(packagePathMap);
+    if (mapEntries.length > 0) {
+      logger.info(`Package path map: ${mapEntries.map(([k, v]) => `${k} -> ${v}`).join(', ')}`);
+    }
     logger.info(`Received ${scriptPaths.length} script paths from Unity`);
 
     // Clear index once at the start of a fresh run
@@ -299,6 +325,7 @@ async function toolHandler(
       totalUnityDocuments,
       collectedUnityDocuments: unityOffset,
       cleared: true,
+      packagePathMap,
     }, logger);
 
     // Check deadline after collection + first page indexing
@@ -317,7 +344,7 @@ async function toolHandler(
     }
 
     const batchEnd = Math.min(scriptsIndexedCount + BATCH_SIZE, scriptPaths.length);
-    const batch = readScriptBatch(scriptPaths, scriptsIndexedCount, batchEnd, unityProjectRoot, logger);
+    const batch = readScriptBatch(scriptPaths, scriptsIndexedCount, batchEnd, unityProjectRoot, logger, packagePathMap);
     totalScriptsRead += batch.length;
     const isLastScriptBatch = batchEnd >= scriptPaths.length;
     // Only finalize if this is both the last script batch AND all prefabs are done
@@ -341,6 +368,7 @@ async function toolHandler(
       totalUnityDocuments,
       collectedUnityDocuments: unityOffset,
       cleared: true,
+      packagePathMap,
     }, logger);
   }
 
@@ -396,6 +424,7 @@ async function toolHandler(
       totalUnityDocuments,
       collectedUnityDocuments: unityOffset,
       cleared: true,
+      packagePathMap,
     }, logger);
   }
 
