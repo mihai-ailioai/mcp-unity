@@ -150,6 +150,7 @@ async function toolHandler(
   let unityOffset: number;
   let scriptsIndexed: boolean;
   let totalSkipped = 0;
+  let totalUnityDocsIndexed = 0;
 
   if (checkpoint) {
     // Resume: use cached script documents and pick up where we left off
@@ -205,6 +206,7 @@ async function toolHandler(
 
     // Index the first page of Unity documents immediately
     const firstPageDocs = firstPage.documents ?? [];
+    totalUnityDocsIndexed += firstPageDocs.length;
     const firstBatchDocs = [...scriptDocuments, ...firstPageDocs];
 
     if (firstBatchDocs.length > 0) {
@@ -229,7 +231,7 @@ async function toolHandler(
       deleteCheckpoint(logger);
       const indexedPaths = contextEngine.getIndexedPaths();
       const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
-      const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocuments} prefabs/scenes${skippedNote}. Context engine now tracks ${indexedPaths.length} paths.`;
+      const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocsIndexed} prefabs/scenes${skippedNote}. Context engine now tracks ${indexedPaths.length} paths.`;
       await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
       return { content: [{ type: 'text', text: summary }] };
     }
@@ -256,6 +258,8 @@ async function toolHandler(
       logger.info(`Empty page at offset ${unityOffset}, stopping pagination`);
       break;
     }
+
+    totalUnityDocsIndexed += pageDocs.length;
 
     // If resuming and scripts haven't been indexed yet, prepend them to first batch
     let docsToIndex = pageDocs;
@@ -286,14 +290,15 @@ async function toolHandler(
   const indexedPaths = contextEngine.getIndexedPaths();
   const resumeNote = isResume ? ' (resumed from checkpoint)' : '';
   const skippedNote = totalSkipped > 0 ? ` (${totalSkipped} skipped as oversized)` : '';
-  const summary = `Indexed ${scriptDocuments.length} scripts + ${unityOffset} prefabs/scenes${skippedNote}${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
+  const summary = `Indexed ${scriptDocuments.length} scripts + ${totalUnityDocsIndexed} prefabs/scenes${skippedNote}${resumeNote}. Context engine now tracks ${indexedPaths.length} paths.`;
 
   await sendProgress(extra, totalUnityDocuments, totalUnityDocuments, summary, logger);
 
   logger.info('Completed project indexing run', {
     scriptCount: scriptDocuments.length,
-    unityDocumentCount: unityOffset,
+    unityDocumentCount: totalUnityDocsIndexed,
     indexedPathCount: indexedPaths.length,
+    skippedCount: totalSkipped,
     resumed: isResume,
   });
 

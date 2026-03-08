@@ -15,13 +15,15 @@ export declare class ContextEngineService {
     clearIndex(): Promise<void>;
     /**
      * Index a single batch of documents. Used by checkpoint-based resumable indexing.
+     * Automatically skips documents exceeding the 1MB blob size limit.
      * @param batch The documents to index in this batch.
      * @param isLastBatch If true, waits for indexing to complete and persists state.
+     * @returns Number of documents skipped due to size limits.
      */
     indexBatch(batch: Array<{
         path: string;
         contents: string;
-    }>, isLastBatch: boolean): Promise<void>;
+    }>, isLastBatch: boolean): Promise<number>;
     search(query: string): Promise<string>;
     getIndexedPaths(): string[];
     saveState(): Promise<void>;
