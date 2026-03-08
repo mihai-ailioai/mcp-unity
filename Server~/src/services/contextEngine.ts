@@ -32,18 +32,14 @@ export class ContextEngineService {
 
   public async initialize(): Promise<void> {
     if (this.context) {
-      this.logger.info('Context engine already initialized');
       return;
     }
 
     try {
-      this.logger.info(`Initializing context engine from state file: ${STATE_FILE_PATH}`);
       this.context = await DirectContext.importFromFile(STATE_FILE_PATH);
-      this.logger.info('Context engine restored from saved state');
     } catch (error) {
-      this.logger.warn('Failed to restore context engine state, creating a new context', error);
+      this.logger.warn('Failed to restore context engine state, creating new context');
       this.context = await DirectContext.create();
-      this.logger.info('Created new context engine state');
     }
   }
 
@@ -51,12 +47,10 @@ export class ContextEngineService {
     const context = this.requireContext();
 
     if (documents.length === 0) {
-      this.logger.info('No documents received for indexing');
       return;
     }
 
     // Clear stale index so it reflects exactly what the editor is configured to index
-    this.logger.info('Clearing previous index before re-indexing');
     await context.clearIndex();
 
     // Filter out documents that exceed the Context Engine blob size limit
@@ -69,28 +63,16 @@ export class ContextEngineService {
       return true;
     });
 
-    this.logger.info(`Indexing ${validDocs.length} documents (${documents.length - validDocs.length} skipped as oversized)`);
-
     for (let offset = 0; offset < validDocs.length; offset += BATCH_SIZE) {
       const batch = validDocs.slice(offset, offset + BATCH_SIZE) as ContextDocument[];
-      const batchNumber = Math.floor(offset / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(validDocs.length / BATCH_SIZE);
       const isLastBatch = offset + BATCH_SIZE >= validDocs.length;
-
-      this.logger.info(`Uploading indexing batch ${batchNumber}/${totalBatches}`, {
-        batchSize: batch.length,
-        waitForIndexing: isLastBatch,
-      });
 
       await context.addToIndex(batch, {
         waitForIndexing: isLastBatch,
       });
     }
 
-    this.logger.info('Waiting for context engine indexing to finish');
     await context.waitForIndexing();
-
-    this.logger.info(`Persisting context engine state to ${STATE_FILE_PATH}`);
     await context.exportToFile(STATE_FILE_PATH);
   }
 
@@ -99,7 +81,6 @@ export class ContextEngineService {
    */
   public async clearIndex(): Promise<void> {
     const context = this.requireContext();
-    this.logger.info('Clearing previous index');
     await context.clearIndex();
   }
 
@@ -147,9 +128,7 @@ export class ContextEngineService {
     }
 
     if (isLastBatch) {
-      this.logger.info('Waiting for context engine indexing to finish');
       await context.waitForIndexing();
-      this.logger.info(`Persisting context engine state to ${STATE_FILE_PATH}`);
       await context.exportToFile(STATE_FILE_PATH);
     }
 
@@ -158,7 +137,6 @@ export class ContextEngineService {
 
   public async search(query: string): Promise<string> {
     const context = this.requireContext();
-    this.logger.info(`Searching context engine for query: ${query}`);
     return await context.search(query);
   }
 
@@ -168,14 +146,11 @@ export class ContextEngineService {
       return [];
     }
 
-    const paths = this.context.getIndexedPaths();
-    this.logger.info(`Retrieved ${paths.length} indexed paths`);
-    return paths;
+    return this.context.getIndexedPaths();
   }
 
   public async saveState(): Promise<void> {
     const context = this.requireContext();
-    this.logger.info(`Saving context engine state to ${STATE_FILE_PATH}`);
     await context.exportToFile(STATE_FILE_PATH);
   }
 

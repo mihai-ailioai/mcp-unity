@@ -71,9 +71,7 @@ function loadCheckpoint(logger: Logger): IndexCheckpoint | null {
       data.scriptsIndexedCount = (data as any).scriptsIndexed ? data.scriptPaths.length : 0;
     }
 
-    const checkpoint = data as IndexCheckpoint;
-    logger.info(`Loaded checkpoint: ${checkpoint.scriptsIndexedCount}/${checkpoint.scriptPaths.length} scripts indexed, ${checkpoint.collectedUnityDocuments}/${checkpoint.totalUnityDocuments} Unity docs collected`);
-    return checkpoint;
+    return data as IndexCheckpoint;
   } catch {
     return null;
   }
@@ -91,7 +89,6 @@ function deleteCheckpoint(logger: Logger): void {
   try {
     if (fs.existsSync(CHECKPOINT_PATH)) {
       fs.unlinkSync(CHECKPOINT_PATH);
-      logger.info('Deleted indexing checkpoint');
     }
   } catch (err: any) {
     logger.error(`Failed to delete checkpoint: ${err.message}`);
@@ -309,12 +306,6 @@ async function toolHandler(
     scriptPaths = firstPage.scriptPaths ?? [];
     packagePathMap = firstPage.packagePathMap ?? {};
 
-    const mapEntries = Object.entries(packagePathMap);
-    if (mapEntries.length > 0) {
-      logger.info(`Package path map: ${mapEntries.map(([k, v]) => `${k} -> ${v}`).join(', ')}`);
-    }
-    logger.info(`Received ${scriptPaths.length} script paths from Unity`);
-
     // Clear index once at the start of a fresh run
     await contextEngine.clearIndex();
 
@@ -342,7 +333,6 @@ async function toolHandler(
 
     // Check deadline after collection + first page indexing
     if (isNearDeadline()) {
-      logger.info('Approaching time limit after collection phase');
       return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
     }
   }
@@ -353,7 +343,6 @@ async function toolHandler(
   const sampleErrors: string[] = [];
   while (scriptsIndexedCount < scriptPaths.length) {
     if (isNearDeadline()) {
-      logger.info('Approaching time limit during script indexing');
       return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
     }
 
@@ -371,7 +360,6 @@ async function toolHandler(
     const batchNum = Math.floor(scriptsIndexedCount / BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(scriptPaths.length / BATCH_SIZE);
     const msg = `Indexing scripts batch ${batchNum}/${totalBatches} (${scriptsIndexedCount}/${scriptPaths.length})...`;
-    logger.info(msg);
     await sendProgress(extra, scriptsIndexedCount, scriptPaths.length + totalUnityDocuments, msg, logger);
 
     if (batchResult.docs.length > 0) {
@@ -390,8 +378,6 @@ async function toolHandler(
     }, logger);
   }
 
-  logger.info(`Script indexing complete: ${totalScriptsRead} non-empty scripts read from ${scriptPaths.length} paths`);
-
   // Check if everything is done (small project, all fit in first page)
   if (unityOffset >= totalUnityDocuments) {
     deleteCheckpoint(logger);
@@ -404,12 +390,10 @@ async function toolHandler(
   // ── Phase 2: Paginate remaining Unity documents ───────────────────
   while (unityOffset < totalUnityDocuments) {
     if (isNearDeadline()) {
-      logger.info('Approaching time limit during prefab/scene collection');
       return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
     }
 
     const pageMsg = `Collecting Unity assets (${unityOffset}/${totalUnityDocuments})...`;
-    logger.info(pageMsg);
     await sendProgress(extra, scriptPaths.length + unityOffset, scriptPaths.length + totalUnityDocuments, pageMsg, logger);
 
     const page = (await mcpUnity.sendRequest(
@@ -423,7 +407,6 @@ async function toolHandler(
 
     const pageDocs = page.documents ?? [];
     if (pageDocs.length === 0) {
-      logger.info(`Empty page at offset ${unityOffset}, stopping pagination`);
       break;
     }
 
@@ -459,23 +442,7 @@ async function toolHandler(
     }
   }
 
-  // Log package path map for diagnostics
-  const mapEntries = Object.entries(packagePathMap);
-  if (mapEntries.length > 0) {
-    summary += `\n\nPackage path mappings: ${mapEntries.map(([k, v]) => `${k} -> ${v}`).join(', ')}`;
-  }
-
   await sendProgress(extra, scriptPaths.length + totalUnityDocuments, scriptPaths.length + totalUnityDocuments, summary, logger);
-
-  logger.info('Completed project indexing run', {
-    scriptPaths: scriptPaths.length,
-    scriptsReadThisRun: totalScriptsRead,
-    scriptReadErrors: totalScriptReadErrors,
-    unityDocumentCount: totalUnityDocsIndexed,
-    indexedPathCount: indexedPaths.length,
-    ...stats,
-    resumed: isResume,
-  });
 
   return { content: [{ type: 'text', text: summary }] };
 }

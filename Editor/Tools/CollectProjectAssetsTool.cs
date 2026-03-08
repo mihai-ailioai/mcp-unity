@@ -348,7 +348,6 @@ namespace McpUnity.Tools
                         result.Add(packageFolder);
                     }
                 }
-                McpLogger.LogInfo($"[Context Engine] Search folders (default): {string.Join(", ", result)}");
                 return result;
             }
 
@@ -368,7 +367,6 @@ namespace McpUnity.Tools
                 }
             }
 
-            McpLogger.LogInfo($"[Context Engine] Search folders (configured): {string.Join(", ", result)}");
             return result;
         }
 
@@ -384,23 +382,16 @@ namespace McpUnity.Tools
             string packagesPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Packages");
 
             if (!System.IO.Directory.Exists(packagesPath))
-            {
-                McpLogger.LogWarning($"[Context Engine] Packages directory not found: {packagesPath}");
                 return result;
-            }
 
             string[] dirs = System.IO.Directory.GetDirectories(packagesPath);
-            McpLogger.LogInfo($"[Context Engine] Scanning {dirs.Length} subdirectories in Packages/");
 
             foreach (string dir in dirs)
             {
                 string folderName = System.IO.Path.GetFileName(dir);
                 string packageJsonPath = System.IO.Path.Combine(dir, "package.json");
                 if (!System.IO.File.Exists(packageJsonPath))
-                {
-                    McpLogger.LogInfo($"[Context Engine] Skipping {folderName}: no package.json");
                     continue;
-                }
 
                 try
                 {
@@ -409,16 +400,10 @@ namespace McpUnity.Tools
                     string packageName = packageJson["name"]?.ToString();
 
                     if (string.IsNullOrEmpty(packageName))
-                    {
-                        McpLogger.LogWarning($"[Context Engine] Skipping {folderName}: package.json has no 'name' field");
                         continue;
-                    }
 
                     string assetDbPath = $"Packages/{packageName}";
-                    bool isValid = AssetDatabase.IsValidFolder(assetDbPath);
-                    McpLogger.LogInfo($"[Context Engine] Package {folderName} -> {assetDbPath} (valid={isValid})");
-
-                    if (isValid)
+                    if (AssetDatabase.IsValidFolder(assetDbPath))
                     {
                         result.Add(assetDbPath);
                     }
@@ -428,8 +413,6 @@ namespace McpUnity.Tools
                     McpLogger.LogWarning($"[Context Engine] Failed to read package.json in {folderName}: {e.Message}");
                 }
             }
-
-            McpLogger.LogInfo($"[Context Engine] Found {result.Count} local packages: {string.Join(", ", result)}");
 
             return result;
         }

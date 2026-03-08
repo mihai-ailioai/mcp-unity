@@ -34,9 +34,7 @@ function loadCheckpoint(logger) {
         if (typeof data.scriptsIndexedCount !== 'number') {
             data.scriptsIndexedCount = data.scriptsIndexed ? data.scriptPaths.length : 0;
         }
-        const checkpoint = data;
-        logger.info(`Loaded checkpoint: ${checkpoint.scriptsIndexedCount}/${checkpoint.scriptPaths.length} scripts indexed, ${checkpoint.collectedUnityDocuments}/${checkpoint.totalUnityDocuments} Unity docs collected`);
-        return checkpoint;
+        return data;
     }
     catch {
         return null;
@@ -54,7 +52,6 @@ function deleteCheckpoint(logger) {
     try {
         if (fs.existsSync(CHECKPOINT_PATH)) {
             fs.unlinkSync(CHECKPOINT_PATH);
-            logger.info('Deleted indexing checkpoint');
         }
     }
     catch (err) {
@@ -206,11 +203,6 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         totalUnityDocuments = firstPage.totalDocuments ?? (firstPage.documents?.length ?? 0);
         scriptPaths = firstPage.scriptPaths ?? [];
         packagePathMap = firstPage.packagePathMap ?? {};
-        const mapEntries = Object.entries(packagePathMap);
-        if (mapEntries.length > 0) {
-            logger.info(`Package path map: ${mapEntries.map(([k, v]) => `${k} -> ${v}`).join(', ')}`);
-        }
-        logger.info(`Received ${scriptPaths.length} script paths from Unity`);
         // Clear index once at the start of a fresh run
         await contextEngine.clearIndex();
         // Index the first page of Unity documents (prefabs/scenes) immediately
@@ -234,7 +226,6 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         }, logger);
         // Check deadline after collection + first page indexing
         if (isNearDeadline()) {
-            logger.info('Approaching time limit after collection phase');
             return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
         }
     }
@@ -244,7 +235,6 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     const sampleErrors = [];
     while (scriptsIndexedCount < scriptPaths.length) {
         if (isNearDeadline()) {
-            logger.info('Approaching time limit during script indexing');
             return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
         }
         const batchEnd = Math.min(scriptsIndexedCount + BATCH_SIZE, scriptPaths.length);
@@ -260,7 +250,6 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         const batchNum = Math.floor(scriptsIndexedCount / BATCH_SIZE) + 1;
         const totalBatches = Math.ceil(scriptPaths.length / BATCH_SIZE);
         const msg = `Indexing scripts batch ${batchNum}/${totalBatches} (${scriptsIndexedCount}/${scriptPaths.length})...`;
-        logger.info(msg);
         await sendProgress(extra, scriptsIndexedCount, scriptPaths.length + totalUnityDocuments, msg, logger);
         if (batchResult.docs.length > 0) {
             accumulateStats(await contextEngine.indexBatch(batchResult.docs, isLastOverall));
@@ -276,7 +265,6 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             packagePathMap,
         }, logger);
     }
-    logger.info(`Script indexing complete: ${totalScriptsRead} non-empty scripts read from ${scriptPaths.length} paths`);
     // Check if everything is done (small project, all fit in first page)
     if (unityOffset >= totalUnityDocuments) {
         deleteCheckpoint(logger);
@@ -288,11 +276,9 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
     // ── Phase 2: Paginate remaining Unity documents ───────────────────
     while (unityOffset < totalUnityDocuments) {
         if (isNearDeadline()) {
-            logger.info('Approaching time limit during prefab/scene collection');
             return earlyReturn(scriptPaths.length, scriptsIndexedCount, totalUnityDocuments, unityOffset, totalUnityDocsIndexed, startTime);
         }
         const pageMsg = `Collecting Unity assets (${unityOffset}/${totalUnityDocuments})...`;
-        logger.info(pageMsg);
         await sendProgress(extra, scriptPaths.length + unityOffset, scriptPaths.length + totalUnityDocuments, pageMsg, logger);
         const page = (await mcpUnity.sendRequest({ method: 'collect_project_assets', params: { offset: unityOffset } }, { timeout: 300000 }));
         if (!page.success) {
@@ -300,7 +286,6 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
         }
         const pageDocs = page.documents ?? [];
         if (pageDocs.length === 0) {
-            logger.info(`Empty page at offset ${unityOffset}, stopping pagination`);
             break;
         }
         totalUnityDocsIndexed += pageDocs.length;
@@ -328,21 +313,7 @@ async function toolHandler(mcpUnity, contextEngine, rawParams, extra, logger) {
             summary += `\nSample errors:\n${sampleErrors.map(e => `  - ${e}`).join('\n')}`;
         }
     }
-    // Log package path map for diagnostics
-    const mapEntries = Object.entries(packagePathMap);
-    if (mapEntries.length > 0) {
-        summary += `\n\nPackage path mappings: ${mapEntries.map(([k, v]) => `${k} -> ${v}`).join(', ')}`;
-    }
     await sendProgress(extra, scriptPaths.length + totalUnityDocuments, scriptPaths.length + totalUnityDocuments, summary, logger);
-    logger.info('Completed project indexing run', {
-        scriptPaths: scriptPaths.length,
-        scriptsReadThisRun: totalScriptsRead,
-        scriptReadErrors: totalScriptReadErrors,
-        unityDocumentCount: totalUnityDocsIndexed,
-        indexedPathCount: indexedPaths.length,
-        ...stats,
-        resumed: isResume,
-    });
     return { content: [{ type: 'text', text: summary }] };
 }
 // ── Summary formatting ─────────────────────────────────────────────────
