@@ -16,11 +16,14 @@ namespace McpUnity.Tools
 {
     /// <summary>
     /// Collects project assets into path/content documents for Node-side indexing.
+    /// Supports paginated collection of prefab/scene documents via offset/limit params
+    /// to avoid exceeding WebSocket payload limits on large projects.
     /// </summary>
     public class CollectProjectAssetsTool : McpToolBase
     {
         public const string PrefabDocumentType = "prefab";
         public const string SceneDocumentType = "scene";
+        public const int DefaultPageSize = 100;
 
         public class CollectedDocument
         {
@@ -41,7 +44,7 @@ namespace McpUnity.Tools
         public CollectProjectAssetsTool()
         {
             Name = "collect_project_assets";
-            Description = "Collects Unity scripts, prefabs, and optional scenes as documents for context indexing.";
+            Description = "Collects Unity scripts, prefabs, and optional scenes as documents for context indexing. Supports pagination via offset/limit for large projects.";
             IsAsync = true;
         }
 
@@ -52,6 +55,10 @@ namespace McpUnity.Tools
 
         private static IEnumerator ExecuteCollectCoroutine(JObject parameters, TaskCompletionSource<JObject> tcs)
         {
+            // Pagination params for prefab/scene documents
+            int offset = parameters["offset"]?.ToObject<int>() ?? 0;
+            int limit = parameters["limit"]?.ToObject<int>() ?? DefaultPageSize;
+
             // Always use editor settings — folders and scene inclusion are configured in the Context Engine tab
             var settings = McpUnitySettings.Instance;
             bool includeScenes = settings.ContextEngineIndexScenes;
@@ -77,21 +84,56 @@ namespace McpUnity.Tools
                     McpLogger.LogWarning($"[Context Engine] Skipping invalid folders: {string.Join(", ", invalidFolders)}");
                 }
 
-                // Scripts: only collect paths — Node reads file contents directly from disk
-                List<string> scriptPaths = CollectScriptPaths(searchFolders);
+                // Scripts: only collect paths (lightweight strings) — always returned in full on first page
+                List<string> scriptPaths = offset == 0
+                    ? CollectScriptPaths(searchFolders)
+                    : new List<string>();
 
-                // Prefabs & scenes: need Unity runtime to summarize, so send full documents
-                List<CollectedDocument> documents = new List<CollectedDocument>();
-                documents.AddRange(CollectPrefabs(searchFolders));
-
+                // Discover all prefab/scene asset GUIDs to determine total count
+                var assetGuids = new List<AssetGuidEntry>();
+                DiscoverPrefabGuids(searchFolders, assetGuids);
                 if (includeScenes)
                 {
-                    documents.AddRange(CollectScenes(searchFolders));
+                    DiscoverSceneGuids(searchFolders, assetGuids);
+                }
+
+                int totalDocuments = assetGuids.Count;
+
+                // Paginate: only process the requested slice
+                int endIndex = Math.Min(offset + limit, totalDocuments);
+                var documents = new List<CollectedDocument>();
+
+                for (int i = offset; i < endIndex; i++)
+                {
+                    var entry = assetGuids[i];
+
+                    EditorUtility.DisplayProgressBar(
+                        "Context Engine — Collecting Assets",
+                        $"{entry.AssetPath}  ({i + 1}/{totalDocuments})",
+                        (float)(i + 1) / totalDocuments);
+
+                    try
+                    {
+                        if (entry.Type == PrefabDocumentType)
+                        {
+                            var doc = ProcessPrefab(entry.AssetPath);
+                            if (doc != null) documents.Add(doc);
+                        }
+                        else if (entry.Type == SceneDocumentType)
+                        {
+                            var doc = ProcessScene(entry.AssetPath);
+                            if (doc != null) documents.Add(doc);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        McpLogger.LogError($"[Context Engine] Failed to process {entry.Type} {entry.AssetPath}: {ex.Message}");
+                    }
                 }
 
                 EditorUtility.DisplayProgressBar(
                     "Context Engine — Preparing response",
-                    $"Collected {scriptPaths.Count} scripts, {documents.Count} prefabs/scenes",
+                    $"Page offset={offset} limit={limit}: {documents.Count} documents (total: {totalDocuments})",
                     1f);
 
                 var responseScriptPaths = new JArray();
@@ -111,6 +153,9 @@ namespace McpUnity.Tools
                     ["success"] = true,
                     ["scriptPaths"] = responseScriptPaths,
                     ["documents"] = responseDocuments,
+                    ["totalDocuments"] = totalDocuments,
+                    ["offset"] = offset,
+                    ["limit"] = limit,
                 };
 
                 if (invalidFolders.Count > 0)
@@ -131,6 +176,111 @@ namespace McpUnity.Tools
                 ));
             }
         }
+
+        // ── Asset GUID discovery (lightweight — no content loading) ──
+
+        private struct AssetGuidEntry
+        {
+            public string Guid;
+            public string AssetPath;
+            public string Type;
+        }
+
+        private static void DiscoverPrefabGuids(List<string> searchFolders, List<AssetGuidEntry> entries)
+        {
+            var seen = new HashSet<string>();
+            string[] guids = AssetDatabase.FindAssets("t:Prefab", searchFolders.ToArray());
+            foreach (string guid in guids)
+            {
+                if (!seen.Add(guid)) continue;
+                entries.Add(new AssetGuidEntry
+                {
+                    Guid = guid,
+                    AssetPath = AssetDatabase.GUIDToAssetPath(guid),
+                    Type = PrefabDocumentType,
+                });
+            }
+        }
+
+        private static void DiscoverSceneGuids(List<string> searchFolders, List<AssetGuidEntry> entries)
+        {
+            var seen = new HashSet<string>();
+            string[] guids = AssetDatabase.FindAssets("t:SceneAsset", searchFolders.ToArray());
+            foreach (string guid in guids)
+            {
+                if (!seen.Add(guid)) continue;
+                entries.Add(new AssetGuidEntry
+                {
+                    Guid = guid,
+                    AssetPath = AssetDatabase.GUIDToAssetPath(guid),
+                    Type = SceneDocumentType,
+                });
+            }
+        }
+
+        // ── Individual asset processing ──
+
+        private static CollectedDocument ProcessPrefab(string assetPath)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            if (prefab == null) return null;
+
+            JObject summary = GetGameObjectResource.GameObjectToSummaryJObject(prefab);
+            if (summary == null) return null;
+
+            summary["assetPath"] = assetPath;
+
+            return new CollectedDocument
+            {
+                Type = PrefabDocumentType,
+                Path = assetPath,
+                Contents = summary.ToString(Formatting.None),
+            };
+        }
+
+        private static CollectedDocument ProcessScene(string assetPath)
+        {
+            var scene = default(UnityEngine.SceneManagement.Scene);
+            bool sceneOpened = false;
+
+            try
+            {
+                scene = EditorSceneManager.OpenScene(assetPath, OpenSceneMode.Additive);
+                sceneOpened = scene.IsValid();
+
+                JArray rootObjects = new JArray();
+                foreach (GameObject rootObject in scene.GetRootGameObjects())
+                {
+                    rootObjects.Add(GetGameObjectResource.GameObjectToSummaryJObject(rootObject));
+                }
+
+                JObject sceneDocument = new JObject
+                {
+                    ["assetPath"] = assetPath,
+                    ["sceneName"] = scene.name,
+                    ["rootObjects"] = rootObjects,
+                };
+
+                EditorSceneManager.CloseScene(scene, true);
+                sceneOpened = false;
+
+                return new CollectedDocument
+                {
+                    Type = SceneDocumentType,
+                    Path = assetPath,
+                    Contents = sceneDocument.ToString(Formatting.None),
+                };
+            }
+            finally
+            {
+                if (sceneOpened && scene.IsValid() && scene.isLoaded)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        // ── Shared helpers ──
 
         public static List<string> ResolveSearchFolders(List<string> folders, out List<string> invalidFolders)
         {
@@ -194,146 +344,6 @@ namespace McpUnity.Tools
             }
 
             return paths;
-        }
-
-        public static List<CollectedDocument> CollectPrefabs(List<string> searchFolders)
-        {
-            var documents = new List<CollectedDocument>();
-            var seen = new HashSet<string>();
-            string[] guids = AssetDatabase.FindAssets("t:Prefab", searchFolders.ToArray());
-
-            for (int i = 0; i < guids.Length; i++)
-            {
-                string guid = guids[i];
-                if (!seen.Add(guid))
-                {
-                    continue;
-                }
-
-                string assetPath = AssetDatabase.GUIDToAssetPath(guid);
-
-                EditorUtility.DisplayProgressBar(
-                    "Context Engine — Collecting Prefabs",
-                    $"{assetPath}  ({i + 1}/{guids.Length})",
-                    (float)(i + 1) / guids.Length);
-
-                try
-                {
-                    GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
-                    if (prefab == null)
-                    {
-                        continue;
-                    }
-
-                    JObject summary = GetGameObjectResource.GameObjectToSummaryJObject(prefab);
-                    if (summary == null)
-                    {
-                        continue;
-                    }
-
-                    summary["assetPath"] = assetPath;
-
-                    documents.Add(new CollectedDocument
-                    {
-                        Type = PrefabDocumentType,
-                        Path = assetPath,
-                        Contents = summary.ToString(Formatting.None),
-                    });
-                }
-                catch (Exception ex)
-                {
-                    McpLogger.LogError($"[Context Engine] Failed to process prefab {assetPath}: {ex.Message}");
-                }
-            }
-
-            return documents;
-        }
-
-        public static List<CollectedDocument> CollectScenes(List<string> searchFolders)
-        {
-            var documents = new List<CollectedDocument>();
-            var seen = new HashSet<string>();
-            string[] guids = AssetDatabase.FindAssets("t:SceneAsset", searchFolders.ToArray());
-
-            for (int i = 0; i < guids.Length; i++)
-            {
-                string guid = guids[i];
-                if (!seen.Add(guid))
-                {
-                    continue;
-                }
-
-                string assetPath = AssetDatabase.GUIDToAssetPath(guid);
-                var scene = default(UnityEngine.SceneManagement.Scene);
-                bool sceneOpened = false;
-
-                EditorUtility.DisplayProgressBar(
-                    "Context Engine — Collecting Scenes",
-                    $"{assetPath}  ({i + 1}/{guids.Length})",
-                    (float)(i + 1) / guids.Length);
-
-                try
-                {
-                    scene = EditorSceneManager.OpenScene(assetPath, OpenSceneMode.Additive);
-                    sceneOpened = scene.IsValid();
-
-                    JArray rootObjects = new JArray();
-                    foreach (GameObject rootObject in scene.GetRootGameObjects())
-                    {
-                        rootObjects.Add(GetGameObjectResource.GameObjectToSummaryJObject(rootObject));
-                    }
-
-                    JObject sceneDocument = new JObject
-                    {
-                        ["assetPath"] = assetPath,
-                        ["sceneName"] = scene.name,
-                        ["rootObjects"] = rootObjects,
-                    };
-
-                    documents.Add(new CollectedDocument
-                    {
-                        Type = SceneDocumentType,
-                        Path = assetPath,
-                        Contents = sceneDocument.ToString(Formatting.None),
-                    });
-
-                    EditorSceneManager.CloseScene(scene, true);
-                    sceneOpened = false;
-                }
-                catch (Exception ex)
-                {
-                    McpLogger.LogError($"[Context Engine] Failed to process scene {assetPath}: {ex.Message}");
-                }
-                finally
-                {
-                    if (sceneOpened && scene.IsValid() && scene.isLoaded)
-                    {
-                        EditorSceneManager.CloseScene(scene, true);
-                    }
-                }
-            }
-
-            return documents;
-        }
-
-        private static List<string> ParseFolders(JArray foldersArray)
-        {
-            var folders = new List<string>();
-            if (foldersArray == null)
-            {
-                return folders;
-            }
-
-            foreach (JToken folderToken in foldersArray)
-            {
-                string folder = folderToken?.ToObject<string>();
-                if (folder != null)
-                {
-                    folders.Add(folder);
-                }
-            }
-
-            return folders;
         }
 
         private static string ResolveSearchFolder(string folder)
