@@ -292,7 +292,7 @@ namespace McpUnity.Unity
         private void DrawContextEngineTab()
         {
             _contextEngineTabScrollPosition = EditorGUILayout.BeginScrollView(_contextEngineTabScrollPosition);
-            EditorGUILayout.BeginVertical();
+            EditorGUILayout.BeginVertical("box");
             
             EditorGUILayout.HelpBox(
                 "Index your project's scripts and prefabs for semantic search by AI agents using the Augment Context Engine. " +
@@ -452,6 +452,8 @@ namespace McpUnity.Unity
             }
             
             EditorGUILayout.Space();
+            EditorGUILayout.EndVertical();
+            
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndScrollView();
         }
