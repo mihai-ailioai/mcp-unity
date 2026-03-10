@@ -76,7 +76,7 @@ namespace McpUnity.Resources
 
             // Convert the GameObject to a JObject
             JObject gameObjectData = summary 
-                ? GameObjectToSummaryJObject(gameObject) 
+                ? GameObjectToListingJObject(gameObject) 
                 : GameObjectToJObject(gameObject, true);
                 
             // Create the response
@@ -379,6 +379,45 @@ namespace McpUnity.Resources
                 }
             }
 
+            return result;
+        }
+
+        /// <summary>
+        /// Convert a GameObject to a listing JObject with name, instanceId, and component type
+        /// names for every child — no deduplication, no depth limit, no property serialization.
+        /// This is the default "summary" mode for interactive agent use, where individual identity
+        /// matters (e.g. for reparenting or targeting specific objects).
+        /// For Context Engine indexing, use <see cref="GameObjectToSummaryJObject"/> instead.
+        /// </summary>
+        /// <param name="gameObject">The GameObject to convert</param>
+        /// <returns>A JObject with name, instanceId, components (type names), and children</returns>
+        public static JObject GameObjectToListingJObject(GameObject gameObject)
+        {
+            if (gameObject == null) return null;
+            
+            var componentTypes = GetComponentTypeNames(gameObject);
+            
+            JObject result = new JObject
+            {
+                ["name"] = gameObject.name,
+                ["instanceId"] = gameObject.GetInstanceID(),
+                ["components"] = new JArray(componentTypes.ToArray()),
+            };
+
+            if (gameObject.transform.childCount > 0)
+            {
+                JArray childrenArray = new JArray();
+                foreach (Transform child in gameObject.transform)
+                {
+                    JObject childObj = GameObjectToListingJObject(child.gameObject);
+                    if (childObj != null)
+                    {
+                        childrenArray.Add(childObj);
+                    }
+                }
+                result["children"] = childrenArray;
+            }
+            
             return result;
         }
 

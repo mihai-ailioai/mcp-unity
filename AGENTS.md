@@ -137,7 +137,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 ### Available tools (current)
 - `execute_menu_item` — Execute Unity menu items
 - `select_gameobject` — Select GameObjects in hierarchy
-- `update_gameobject` — Update or create GameObject properties
+- `update_gameobject` — Update or create GameObject properties. When creating under a UI parent (with RectTransform), automatically adds RectTransform to the new child
 - `update_component` — Update or add components on GameObjects
 - `add_package` — Install packages via Package Manager
 - `run_tests` — Run Unity Test Runner tests
@@ -174,8 +174,8 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - `delete_asset` — Delete assets via AssetDatabase (trash by default, optional permanent delete)
 - `get_import_settings` — Read import settings from any asset's AssetImporter (includes platform overrides for texture/audio)
 - `update_import_settings` — Update import settings on any AssetImporter via reflection, with platform override support for TextureImporter and AudioImporter
-- `get_prefab_info` — Get detailed information about a prefab asset by path without entering Prefab Mode (hierarchy, components, variant metadata). Supports `rootPath` to inspect a subtree, `namePattern`/`componentType` filters to search for matching GameObjects (returns flat list instead of full hierarchy)
-- `modify_prefab` — Modify a prefab asset headlessly via batched operations (same format as batch_execute) using LoadPrefabContents isolated editing context. Supports `find_gameobjects` and `add_asset_to_scene` as sub-operations for searching within and nesting prefabs
+- `get_prefab_info` — Get detailed information about a prefab asset by path without entering Prefab Mode (hierarchy, components, variant metadata). `summary: true` returns a lightweight listing with name, instanceId, and component type names per child (no deduplication, no property details). Supports `rootPath` to inspect a subtree, `namePattern`/`componentType` filters to search for matching GameObjects (returns flat list instead of full hierarchy). **Note:** instanceIds from this tool are NOT valid inside `modify_prefab` (different object graph); use `objectPath` instead
+- `modify_prefab` — Modify a prefab asset headlessly via batched operations (same format as batch_execute) using LoadPrefabContents isolated editing context. Supports `find_gameobjects` and `add_asset_to_scene` as sub-operations for searching within and nesting prefabs. **Important:** `instanceId`/`newParentId` params are rejected in sub-operations — always use `objectPath`/`newParent` path strings
 - `setup_animation_clip` — Create or update AnimationClip assets with curves, keyframes, tangents, events, and loop settings (upsert by propertyPath+type+relativePath match, removals via removeCurves/removeEvents)
 - `setup_animator_controller` — Create or update AnimatorController assets with parameters, layers, states, transitions, and conditions (upsert states by name+layerIndex, parameters by name, transitions additive, removals via removeStates/removeTransitions/removeParameters/removeLayers)
 - `get_animator_info` — Inspect Animator component on a GameObject: controller path, parameters, layers with states and transitions, optional clip details (curve bindings, events)

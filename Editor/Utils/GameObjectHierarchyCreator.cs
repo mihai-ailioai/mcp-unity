@@ -45,6 +45,15 @@ namespace McpUnity.Utils
                 if (childTransform == null)
                 {
                     GameObject newObj = new GameObject(name);
+                    
+                    // If the parent has a RectTransform (UI hierarchy), add RectTransform
+                    // to the new child to match Unity Editor's own behavior when creating
+                    // children under Canvas/UI objects.
+                    if (currentParent != null && currentParent.GetComponent<RectTransform>() != null)
+                    {
+                        newObj.AddComponent<RectTransform>();
+                    }
+                    
                     Undo.RegisterCreatedObjectUndo(newObj, $"Create {name}");
                     if (currentParent != null)
                     {

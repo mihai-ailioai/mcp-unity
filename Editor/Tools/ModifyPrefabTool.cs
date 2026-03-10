@@ -54,6 +54,8 @@ namespace McpUnity.Tools
                           "Uses an isolated editing context — no Prefab Mode or scene instantiation needed. " +
                           "Operations use the same format as batch_execute: [{\"tool\": \"update_component\", \"params\": {...}}, ...]. " +
                           "All objectPath references in operations resolve against the prefab hierarchy. " +
+                          "IMPORTANT: Do NOT use instanceId or newParentId in operations — they are rejected because instance IDs " +
+                          "from get_prefab_info are not valid in this isolated editing context. Always use objectPath/newParent (path strings). " +
                           "Changes are saved automatically if any operation succeeds. " +
                           "Set 'variantPath' to create a prefab variant from the source assetPath before applying operations. " +
                           "When creating a variant, 'operations' is optional (variant is created even with no operations). " +
@@ -318,6 +320,26 @@ namespace McpUnity.Tools
                     {
                         results.Add(CreateOperationResult(i, operationId, false, null,
                             $"Tool '{toolName}' is not allowed inside modify_prefab (it affects scenes or project state outside the prefab editing context)"));
+                        failed++;
+
+                        if (stopOnError) break;
+                        continue;
+                    }
+
+                    // Warn about instanceId usage inside prefab editing context.
+                    // Instance IDs from get_prefab_info (which loads via AssetDatabase.LoadAssetAtPath)
+                    // do NOT resolve correctly inside LoadPrefabContents' isolated editing context.
+                    // They may silently resolve to the wrong object graph, causing no-op operations.
+                    if (toolParams["instanceId"] != null || toolParams["newParentId"] != null)
+                    {
+                        string idFields = "";
+                        if (toolParams["instanceId"] != null) idFields += "instanceId";
+                        if (toolParams["newParentId"] != null) idFields += (idFields.Length > 0 ? ", " : "") + "newParentId";
+
+                        results.Add(CreateOperationResult(i, operationId, false, null,
+                            $"Cannot use {idFields} inside modify_prefab. Instance IDs from get_prefab_info " +
+                            $"are not valid in the prefab editing context (different object graph). " +
+                            $"Use objectPath/newParent (path strings) instead."));
                         failed++;
 
                         if (stopOnError) break;

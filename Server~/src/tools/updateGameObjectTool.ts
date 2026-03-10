@@ -7,7 +7,7 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 // Constants for the tool
 const toolName = 'update_gameobject';
-const toolDescription = 'Updates properties of a GameObject in the Unity scene by its instance ID or path. If the GameObject does not exist at the specified path, it will be created.';
+const toolDescription = 'Updates properties of a GameObject in the Unity scene by its instance ID or path. If the GameObject does not exist at the specified path, it will be created. When creating under a UI parent (one with RectTransform), the new GameObject automatically gets a RectTransform instead of a plain Transform.';
 const paramsSchema = z.object({
   instanceId: z.number().optional().describe('The instance ID of the GameObject to update'),
   objectPath: z.string().optional().describe('The path of the GameObject in the hierarchy to update (alternative to instanceId)'),

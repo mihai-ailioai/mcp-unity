@@ -3,9 +3,12 @@ import { McpUnityError, ErrorType } from "../utils/errors.js";
 const toolName = "get_prefab_info";
 const toolDescription = "Get detailed information about a prefab asset by asset path, without entering Prefab Mode or instantiating in scene. " +
     "Returns hierarchy, components, and prefab metadata (variant status, base prefab path). " +
-    "Use summary=true for a lightweight overview (names, instanceIds, component type names only). " +
+    "Use summary=true for a lightweight listing with name, instanceId, and component type names per child (no deduplication, no property details). " +
+    "Without summary (default), returns full component property serialization. " +
     "For large prefabs, use 'rootPath' to inspect a specific subtree, or 'namePattern'/'componentType' to " +
-    "search for matching GameObjects (returns a flat list of matches with full component data instead of the full hierarchy).";
+    "search for matching GameObjects (returns a flat list of matches instead of the full hierarchy). " +
+    "IMPORTANT: instanceIds from this tool are NOT valid inside modify_prefab (different object graph). " +
+    "Use objectPath for modify_prefab operations.";
 const paramsSchema = z.object({
     assetPath: z
         .string()

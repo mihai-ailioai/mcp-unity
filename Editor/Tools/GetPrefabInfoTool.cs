@@ -21,9 +21,10 @@ namespace McpUnity.Tools
             Name = "get_prefab_info";
             Description = "Get detailed information about a prefab asset by asset path, without entering Prefab Mode or instantiating in scene. " +
                           "Returns hierarchy, components, and prefab metadata (variant status, base prefab path). " +
-                          "Use 'summary' for a lightweight overview (names, instanceIds, component type names only). " +
+                          "Use 'summary' for a lightweight listing with name, instanceId, and component type names per child (no deduplication). " +
                           "For large prefabs, use 'rootPath' to inspect a specific subtree, or 'namePattern'/'componentType' to " +
-                          "search for matching GameObjects (returns a flat list of matches with full component data instead of the full hierarchy).";
+                          "search for matching GameObjects (returns a flat list of matches instead of the full hierarchy). " +
+                          "Note: instanceIds from this tool are NOT valid inside modify_prefab (different object graph). Use objectPath instead.";
         }
 
         public override JObject Execute(JObject parameters)
@@ -137,9 +138,11 @@ namespace McpUnity.Tools
                 return filterResponse;
             }
 
-            // Unfiltered mode: full hierarchy serialization (existing behavior)
+            // Unfiltered mode: full hierarchy serialization
+            // summary: listing mode (name, instanceId, component types — no dedup, no properties)
+            // detailed: full component property serialization
             JObject prefabData = summary
-                ? GetGameObjectResource.GameObjectToSummaryJObject(startNode)
+                ? GetGameObjectResource.GameObjectToListingJObject(startNode)
                 : GetGameObjectResource.GameObjectToJObject(startNode, true);
 
             prefabData["assetPath"] = assetPath;
@@ -189,7 +192,7 @@ namespace McpUnity.Tools
             if (nameMatches && componentMatches)
             {
                 JObject matchObj = summary
-                    ? GetGameObjectResource.GameObjectToSummaryJObject(node)
+                    ? GetGameObjectResource.GameObjectToListingJObject(node)
                     : GetGameObjectResource.GameObjectToJObject(node, true);
 
                 // Add the path relative to the prefab root for easy identification

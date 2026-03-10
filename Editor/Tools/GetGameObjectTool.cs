@@ -72,8 +72,10 @@ namespace McpUnity.Tools
             }
 
             // Convert the GameObject to a JObject using the resource's static method
+            // summary: listing mode (name, instanceId, component types — no dedup, no properties)
+            // detailed: full component property serialization
             JObject gameObjectData = summary
-                ? GetGameObjectResource.GameObjectToSummaryJObject(gameObject)
+                ? GetGameObjectResource.GameObjectToListingJObject(gameObject)
                 : GetGameObjectResource.GameObjectToJObject(gameObject, true);
 
             // Create the response
