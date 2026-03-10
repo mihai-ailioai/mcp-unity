@@ -157,7 +157,9 @@ namespace McpUnity.Resources
         }
 
         /// <summary>
-        /// Returns non-Transform component type names for a GameObject.
+        /// Returns component type names for a GameObject, excluding plain Transform
+        /// (which every GameObject has implicitly). RectTransform is kept because it
+        /// signals UI context and distinguishes UI elements from regular GameObjects.
         /// </summary>
         private static List<string> GetComponentTypeNames(GameObject gameObject)
         {
@@ -167,7 +169,7 @@ namespace McpUnity.Resources
             {
                 if (component == null) continue;
                 string typeName = component.GetType().Name;
-                if (typeName != "Transform" && typeName != "RectTransform")
+                if (typeName != "Transform")
                 {
                     typeNames.Add(typeName);
                 }
