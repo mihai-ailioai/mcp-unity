@@ -1,7 +1,11 @@
 import * as z from 'zod';
 import { McpUnityError, ErrorType } from '../utils/errors.js';
 const toolName = 'search_project';
-const toolDescription = 'Searches the local project context index using a natural language query.';
+const toolDescription = 'Semantic search over indexed Unity project assets. Returns actual source code sections with line numbers from multiple relevant files, ranked by relevance. ' +
+    'Use as a FIRST STEP when exploring unfamiliar systems or answering broad questions like "how does X work" or "where is Y handled". ' +
+    'A single query can map out an entire system\'s key files and implementations. ' +
+    'Effective query examples: "camera follow system", "save player data persistence", "multiplayer networking sync", "UI loading screen progress". ' +
+    'Prefer this over file search tools when you need to understand HOW something works rather than find a specific symbol.';
 const paramsSchema = z.object({
     query: z.string().min(1).describe('Natural language query used to search the indexed project context.'),
 });
