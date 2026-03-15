@@ -58,6 +58,40 @@ namespace McpUnity.Utils
         }
 
         /// <summary>
+        /// Writes slash command files into the specified commands directory relative to the project root.
+        /// Creates the directory if it doesn't exist. Overwrites existing command files.
+        /// </summary>
+        /// <param name="commandsDir">Relative path from project root, e.g. ".opencode/commands" or ".claude/commands"</param>
+        private static void WriteSlashCommands(string commandsDir)
+        {
+            try
+            {
+                string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+                string fullDir = Path.Combine(projectRoot, commandsDir);
+                Directory.CreateDirectory(fullDir);
+
+                // index-project: Full re-index of Unity project assets for semantic search
+                string indexProjectCmd =
+                    "---\n" +
+                    "description: Index Unity project assets for semantic search via Context Engine\n" +
+                    "---\n\n" +
+                    "Call the `index_project` MCP tool with no arguments to perform a full re-index of the Unity project.\n\n" +
+                    "This indexes all scripts, prefabs, and scenes (based on the Unity editor's Context Engine settings) " +
+                    "into the Augment Context Engine for semantic search via `search_project`.\n\n" +
+                    "If the tool responds with a \"call again to continue\" message, keep calling `index_project` " +
+                    "(with no arguments) until it reports completion. This happens on large projects where indexing " +
+                    "is split across multiple invocations to avoid timeouts.\n\n" +
+                    "Report the final summary when done.\n";
+
+                File.WriteAllText(Path.Combine(fullDir, "index-project.md"), indexProjectCmd);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[MCP Unity] Failed to write slash commands to {commandsDir}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Generates the MCP configuration JSON to setup the Unity MCP server in different AI Clients.
         /// Uses the portable wrapper script (mcp-unity-server.mjs) with an absolute path to the project root.
         /// </summary>
@@ -324,6 +358,7 @@ await import(pathToFileURL(resolve(server)).href);
         public static bool AddToClaudeCodeConfig()
         {
             if (!WriteWrapperScriptToProjectRoot()) return false;
+            WriteSlashCommands(".claude/commands");
             string configFilePath = GetClaudeCodeConfigPath();
             return AddToConfigFile(configFilePath, "Claude Code");
         }
@@ -362,11 +397,13 @@ await import(pathToFileURL(resolve(server)).href);
         /// <summary>
         /// Adds the MCP configuration to the OpenCode config file (opencode.json in project root).
         /// OpenCode uses a different JSON schema from other clients, with "mcp" instead of "mcpServers".
-        /// Also writes the portable wrapper script (mcp-unity-server.mjs) that the config references.
+        /// Also writes the portable wrapper script (mcp-unity-server.mjs) that the config references,
+        /// and installs slash commands into .opencode/commands/.
         /// </summary>
         public static bool AddToOpenCodeConfig()
         {
             if (!WriteWrapperScriptToProjectRoot()) return false;
+            WriteSlashCommands(".opencode/commands");
             string configFilePath = GetOpenCodeConfigPath();
             return AddToOpenCodeConfigFile(configFilePath, "OpenCode");
         }
