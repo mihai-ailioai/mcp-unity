@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEditor.SceneManagement;
+using McpUnity.Tools;
 using McpUnity.Utils;
 using Newtonsoft.Json.Linq;
 
@@ -120,6 +121,31 @@ namespace McpUnity.Resources
                 }
                 
                 rootObjectsArray.Add(sceneObject);
+            }
+            
+            // Include DontDestroyOnLoad scene during play mode
+            if (Application.isPlaying)
+            {
+                GameObject[] ddolRoots = McpUnity.Tools.GameObjectToolUtils.GetDontDestroyOnLoadRoots();
+                if (ddolRoots.Length > 0)
+                {
+                    JObject ddolScene = new JObject
+                    {
+                        ["name"] = "DontDestroyOnLoad",
+                        ["path"] = "",
+                        ["buildIndex"] = -1,
+                        ["isDirty"] = false,
+                        ["rootObjects"] = new JArray()
+                    };
+                    
+                    JArray ddolObjects = (JArray)ddolScene["rootObjects"];
+                    foreach (GameObject rootObject in ddolRoots)
+                    {
+                        ddolObjects.Add(GetGameObjectResource.GameObjectToJObject(rootObject, false));
+                    }
+                    
+                    rootObjectsArray.Add(ddolScene);
+                }
             }
             
             return rootObjectsArray;

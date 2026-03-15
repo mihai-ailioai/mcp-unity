@@ -138,17 +138,8 @@ namespace McpUnity.Tools
                 }
             }
 
-            // Search all loaded scenes, not just the active one
-            int sceneCount = SceneManager.sceneCount;
-            for (int i = 0; i < sceneCount; i++)
-            {
-                Scene scene = SceneManager.GetSceneAt(i);
-                if (scene.isLoaded)
-                {
-                    roots.AddRange(scene.GetRootGameObjects());
-                }
-            }
-            return roots;
+            // Search all loaded scenes including DontDestroyOnLoad (play mode)
+            return GameObjectToolUtils.GetAllSceneRoots();
         }
 
         private static void CollectMatchesRecursive(

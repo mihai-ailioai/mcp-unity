@@ -65,7 +65,8 @@ namespace McpUnity.Tools
         }
 
         /// <summary>
-        /// Find a GameObject by its hierarchy path
+        /// Find a GameObject by its hierarchy path.
+        /// Searches all loaded scenes including DontDestroyOnLoad (play mode).
         /// </summary>
         /// <param name="path">The path to the GameObject (e.g. "Canvas/Panel/Button")</param>
         /// <returns>The GameObject if found, null otherwise</returns>
@@ -78,41 +79,29 @@ namespace McpUnity.Tools
                 return null;
             }
 
-            // Search all loaded scenes, not just the active one
-            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
-            for (int s = 0; s < sceneCount; s++)
+            // Search all loaded scenes including DontDestroyOnLoad
+            foreach (GameObject rootObj in McpUnity.Tools.GameObjectToolUtils.GetAllSceneRoots())
             {
-                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
-                if (!scene.isLoaded)
+                if (rootObj.name == pathParts[0])
                 {
-                    continue;
-                }
+                    GameObject current = rootObj;
+                    bool found = true;
 
-                GameObject[] rootGameObjects = scene.GetRootGameObjects();
-
-                foreach (GameObject rootObj in rootGameObjects)
-                {
-                    if (rootObj.name == pathParts[0])
+                    for (int i = 1; i < pathParts.Length; i++)
                     {
-                        GameObject current = rootObj;
-                        bool found = true;
-
-                        for (int i = 1; i < pathParts.Length; i++)
+                        Transform child = current.transform.Find(pathParts[i]);
+                        if (child == null)
                         {
-                            Transform child = current.transform.Find(pathParts[i]);
-                            if (child == null)
-                            {
-                                found = false;
-                                break;
-                            }
-
-                            current = child.gameObject;
+                            found = false;
+                            break;
                         }
 
-                        if (found)
-                        {
-                            return current;
-                        }
+                        current = child.gameObject;
+                    }
+
+                    if (found)
+                    {
+                        return current;
                     }
                 }
             }

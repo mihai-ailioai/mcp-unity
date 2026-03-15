@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using McpUnity.Unity;
@@ -60,7 +61,8 @@ namespace McpUnity.Tools
         }
 
         /// <summary>
-        /// Find a GameObject by its hierarchy path
+        /// Find a GameObject by its hierarchy path.
+        /// Searches all loaded scenes including DontDestroyOnLoad (play mode).
         /// </summary>
         private static GameObject FindGameObjectByPath(string path)
         {
@@ -71,42 +73,80 @@ namespace McpUnity.Tools
 
             if (parts.Length == 0) return null;
 
-            // Search all loaded scenes, not just the active one
-            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
-            for (int s = 0; s < sceneCount; s++)
+            // Search all loaded scenes including DontDestroyOnLoad
+            foreach (var root in GetAllSceneRoots())
             {
-                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
-                if (!scene.isLoaded) continue;
-
-                GameObject[] rootObjects = scene.GetRootGameObjects();
-
-                foreach (var root in rootObjects)
+                if (root.name == parts[0])
                 {
-                    if (root.name == parts[0])
+                    GameObject current = root;
+                    bool found = true;
+
+                    for (int i = 1; i < parts.Length; i++)
                     {
-                        GameObject current = root;
-                        bool found = true;
-
-                        for (int i = 1; i < parts.Length; i++)
+                        Transform child = current.transform.Find(parts[i]);
+                        if (child == null)
                         {
-                            Transform child = current.transform.Find(parts[i]);
-                            if (child == null)
-                            {
-                                found = false;
-                                break;
-                            }
-                            current = child.gameObject;
+                            found = false;
+                            break;
                         }
+                        current = child.gameObject;
+                    }
 
-                        if (found)
-                        {
-                            return current;
-                        }
+                    if (found)
+                    {
+                        return current;
                     }
                 }
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Returns root GameObjects from all loaded scenes plus the DontDestroyOnLoad
+        /// scene (when in play mode). This covers network-spawned objects and anything
+        /// marked with DontDestroyOnLoad that SceneManager.GetSceneAt() does not enumerate.
+        /// </summary>
+        public static List<GameObject> GetAllSceneRoots(bool includeDontDestroyOnLoad = true)
+        {
+            var roots = new List<GameObject>();
+            
+            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            for (int s = 0; s < sceneCount; s++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
+                if (!scene.isLoaded) continue;
+                roots.AddRange(scene.GetRootGameObjects());
+            }
+            
+            if (includeDontDestroyOnLoad && Application.isPlaying)
+            {
+                roots.AddRange(GetDontDestroyOnLoadRoots());
+            }
+            
+            return roots;
+        }
+
+        /// <summary>
+        /// Returns root GameObjects from the DontDestroyOnLoad scene.
+        /// Only works during play mode. Creates a temporary GameObject to access
+        /// the hidden DDOL scene, then destroys it immediately.
+        /// </summary>
+        public static GameObject[] GetDontDestroyOnLoadRoots()
+        {
+            if (!Application.isPlaying)
+                return System.Array.Empty<GameObject>();
+            
+            // Create a temporary object, move it to DDOL, grab its scene, then destroy it
+            var temp = new GameObject("__MCP_DDOL_Probe__");
+            UnityEngine.Object.DontDestroyOnLoad(temp);
+            var ddolScene = temp.scene;
+            UnityEngine.Object.DestroyImmediate(temp);
+            
+            if (!ddolScene.IsValid())
+                return System.Array.Empty<GameObject>();
+            
+            return ddolScene.GetRootGameObjects();
         }
 
         /// <summary>
