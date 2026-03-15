@@ -84,6 +84,23 @@ namespace McpUnity.Utils
                     "Report the final summary when done.\n";
 
                 File.WriteAllText(Path.Combine(fullDir, "index-project.md"), indexProjectCmd);
+
+                // index-changes: Incremental re-index of only the files touched in this session
+                string indexChangesCmd =
+                    "---\n" +
+                    "description: Re-index only files changed in this session\n" +
+                    "---\n\n" +
+                    "Determine which project files you created or modified during this conversation, " +
+                    "then call the `index_project` MCP tool with a `paths` array containing those asset paths.\n\n" +
+                    "For example, if you edited `Assets/Scripts/Player.cs` and `Assets/Prefabs/Enemy.prefab`:\n\n" +
+                    "```json\n" +
+                    "{ \"paths\": [\"Assets/Scripts/Player.cs\", \"Assets/Prefabs/Enemy.prefab\"] }\n" +
+                    "```\n\n" +
+                    "Only include files that exist in the Unity project (Assets/ or Packages/ paths). " +
+                    "Skip files outside the project (e.g. Server~/, docs/, config files).\n\n" +
+                    "Report what was re-indexed when done.\n";
+
+                File.WriteAllText(Path.Combine(fullDir, "index-changes.md"), indexChangesCmd);
             }
             catch (Exception ex)
             {
