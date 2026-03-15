@@ -51,7 +51,7 @@ namespace McpUnity.Tools {
         /// fired within this time (regardless of isCompiling state), bail out.
         /// This handles Hot Reload keeping isCompiling=true indefinitely.
         /// </summary>
-        private const float CompilationWatchdogTimeoutSeconds = 8f;
+        private const float CompilationWatchdogTimeoutSeconds = 3f;
         
         private readonly List<CompilationRequest> _pendingRequests = new List<CompilationRequest>();
         private readonly List<CompilerMessage> _compilationLogs = new List<CompilerMessage>();
