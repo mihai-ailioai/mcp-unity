@@ -35,6 +35,21 @@ async function toolHandler(mcpUnity, params, logger) {
     if (!response.success) {
         throw new McpUnityError(ErrorType.TOOL_EXECUTION, response.message || `Failed to recompile scripts`);
     }
+    // Check if compilation was blocked by a live-reload tool (e.g. Hot Reload)
+    const compilationBlocked = typeof response.message === 'string' &&
+        response.message.includes('did not start');
+    if (compilationBlocked) {
+        // Hot Reload or similar tool handled the changes — no domain reload will occur
+        logger.info('Compilation was handled by live-reload tool — skipping domain reload wait.');
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: response.message
+                }
+            ]
+        };
+    }
     // Check if compilation had errors — if so, domain reload won't happen
     const hasErrors = response.logs?.some?.((log) => log.type === 'Error');
     if (!hasErrors) {

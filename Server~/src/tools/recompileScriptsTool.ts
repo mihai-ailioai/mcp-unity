@@ -53,6 +53,23 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
     );
   }
 
+  // Check if compilation was blocked by a live-reload tool (e.g. Hot Reload)
+  const compilationBlocked = typeof response.message === 'string' && 
+    response.message.includes('did not start');
+  
+  if (compilationBlocked) {
+    // Hot Reload or similar tool handled the changes — no domain reload will occur
+    logger.info('Compilation was handled by live-reload tool — skipping domain reload wait.');
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: response.message
+        }
+      ]
+    };
+  }
+
   // Check if compilation had errors — if so, domain reload won't happen
   const hasErrors = response.logs?.some?.((log: any) => log.type === 'Error');
 

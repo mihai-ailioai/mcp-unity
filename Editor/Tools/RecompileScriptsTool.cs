@@ -1,9 +1,11 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using McpUnity.Utils;
 using Newtonsoft.Json.Linq;
+using Unity.EditorCoroutines.Editor;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -44,9 +46,12 @@ namespace McpUnity.Tools {
             }
         }
         
+        private const float CompilationStartTimeoutSeconds = 5f;
+        
         private readonly List<CompilationRequest> _pendingRequests = new List<CompilationRequest>();
         private readonly List<CompilerMessage> _compilationLogs = new List<CompilerMessage>();
         private int _processedAssemblies = 0;
+        private bool _compilationStarted = false;
 
         public RecompileScriptsTool()
         {
@@ -81,6 +86,7 @@ namespace McpUnity.Tools {
             }
             
             // On first request, initialize compilation listeners and start compilation
+            _compilationStarted = false;
             StartCompilationTracking();
                 
             if (EditorApplication.isCompiling == false)
@@ -93,6 +99,70 @@ namespace McpUnity.Tools {
                 
                 McpLogger.LogInfo("Recompiling all scripts in the Unity project");
                 CompilationPipeline.RequestScriptCompilation();
+                
+                // Start a watchdog coroutine to detect if compilation was blocked
+                // (e.g. by Hot Reload or other tools that intercept the compilation pipeline)
+                EditorCoroutineUtility.StartCoroutineOwnerless(WatchForCompilationStart());
+            }
+            else
+            {
+                // Already compiling (e.g. triggered by file save / Hot Reload)
+                _compilationStarted = true;
+            }
+        }
+        
+        /// <summary>
+        /// Coroutine that checks whether compilation actually started after we requested it.
+        /// If compilation doesn't start within the timeout, something is blocking it
+        /// (e.g. Hot Reload during Play mode) and we should complete requests gracefully.
+        /// </summary>
+        private IEnumerator WatchForCompilationStart()
+        {
+            float elapsed = 0f;
+            float pollInterval = 0.5f;
+            
+            while (elapsed < CompilationStartTimeoutSeconds)
+            {
+                yield return new EditorWaitForSeconds(pollInterval);
+                elapsed += pollInterval;
+                
+                // If compilation started (our event handler fired) or Unity says it's compiling, we're good
+                if (_compilationStarted || EditorApplication.isCompiling)
+                {
+                    _compilationStarted = true;
+                    yield break;
+                }
+            }
+            
+            // Compilation never started — something is blocking it
+            McpLogger.LogWarning(
+                "Recompilation was requested but did not start within " +
+                $"{CompilationStartTimeoutSeconds}s. This typically happens when a live-reload " +
+                "tool (e.g. Hot Reload) intercepts file changes during Play mode. " +
+                "The file edit was likely already applied via hot-reload.");
+            
+            StopCompilationTracking();
+            
+            List<CompilationRequest> requestsToComplete = new List<CompilationRequest>();
+            lock (_pendingRequests)
+            {
+                requestsToComplete.AddRange(_pendingRequests);
+                _pendingRequests.Clear();
+            }
+
+            foreach (var req in requestsToComplete)
+            {
+                var response = new JObject
+                {
+                    ["success"] = true,
+                    ["type"] = "text",
+                    ["message"] = "Recompilation was requested but did not start. " +
+                                  "This typically happens when a live-reload tool (e.g. Hot Reload) " +
+                                  "is active during Play mode and has already applied the changes. " +
+                                  "No standard recompilation occurred.",
+                    ["logs"] = new JArray()
+                };
+                req.CompletionSource.SetResult(response);
             }
         }
 
@@ -121,6 +191,7 @@ namespace McpUnity.Tools {
         /// </summary>
         private void OnAssemblyCompilationFinished(string assemblyPath, CompilerMessage[] messages)
         {
+            _compilationStarted = true;
             _processedAssemblies++;
             _compilationLogs.AddRange(messages);
         }
