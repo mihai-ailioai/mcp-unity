@@ -55,7 +55,7 @@ async function toolHandler(mcpUnity: McpUnity, params: z.infer<typeof paramsSche
 
   // Check if compilation was blocked by a live-reload tool (e.g. Hot Reload)
   const compilationBlocked = typeof response.message === 'string' && 
-    response.message.includes('did not start');
+    response.message.includes('No standard recompilation occurred');
   
   if (compilationBlocked) {
     // Hot Reload or similar tool handled the changes — no domain reload will occur

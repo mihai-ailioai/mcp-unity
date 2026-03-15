@@ -46,12 +46,18 @@ namespace McpUnity.Tools {
             }
         }
         
-        private const float CompilationStartTimeoutSeconds = 5f;
+        /// <summary>
+        /// How long to wait for compilation to complete before assuming it was blocked.
+        /// Short timeout because if Hot Reload handled it, we know within seconds.
+        /// If real compilation is happening, OnCompilationFinished will fire and the
+        /// watchdog exits early via _compilationFinished flag.
+        /// </summary>
+        private const float CompilationWatchdogTimeoutSeconds = 10f;
         
         private readonly List<CompilationRequest> _pendingRequests = new List<CompilationRequest>();
         private readonly List<CompilerMessage> _compilationLogs = new List<CompilerMessage>();
         private int _processedAssemblies = 0;
-        private bool _compilationStarted = false;
+        private bool _compilationFinished = false;
 
         public RecompileScriptsTool()
         {
@@ -86,7 +92,7 @@ namespace McpUnity.Tools {
             }
             
             // On first request, initialize compilation listeners and start compilation
-            _compilationStarted = false;
+            _compilationFinished = false;
             StartCompilationTracking();
                 
             if (EditorApplication.isCompiling == false)
@@ -99,56 +105,65 @@ namespace McpUnity.Tools {
                 
                 McpLogger.LogInfo("Recompiling all scripts in the Unity project");
                 CompilationPipeline.RequestScriptCompilation();
-                
-                // Start a watchdog coroutine to detect if compilation was blocked
-                // (e.g. by Hot Reload or other tools that intercept the compilation pipeline)
-                EditorCoroutineUtility.StartCoroutineOwnerless(WatchForCompilationStart());
             }
             else
             {
-                // Already compiling (e.g. triggered by file save / Hot Reload)
-                _compilationStarted = true;
+                McpLogger.LogInfo("Compilation already in progress, waiting for it to complete...");
             }
+            
+            // Always start the watchdog — it detects if compilation never completes
+            // (e.g. Hot Reload blocks the pipeline, or isCompiling is a false positive)
+            EditorCoroutineUtility.StartCoroutineOwnerless(WatchForCompilationComplete());
         }
         
         /// <summary>
-        /// Coroutine that checks whether compilation actually started after we requested it.
-        /// If compilation doesn't start within the timeout, something is blocking it
-        /// (e.g. Hot Reload during Play mode) and we should complete requests gracefully.
+        /// Coroutine that watches whether compilation completes within a timeout.
+        /// If OnCompilationFinished never fires (e.g. Hot Reload is blocking the
+        /// compilation pipeline, or isCompiling was a false positive), this coroutine
+        /// completes all pending requests gracefully instead of hanging forever.
         /// </summary>
-        private IEnumerator WatchForCompilationStart()
+        private IEnumerator WatchForCompilationComplete()
         {
             float elapsed = 0f;
             float pollInterval = 0.5f;
             
-            while (elapsed < CompilationStartTimeoutSeconds)
+            while (elapsed < CompilationWatchdogTimeoutSeconds)
             {
                 yield return new EditorWaitForSeconds(pollInterval);
                 elapsed += pollInterval;
                 
-                // If compilation started (our event handler fired) or Unity says it's compiling, we're good
-                if (_compilationStarted || EditorApplication.isCompiling)
-                {
-                    _compilationStarted = true;
+                // OnCompilationFinished already handled everything
+                if (_compilationFinished)
                     yield break;
+                
+                // If Unity is actively compiling, keep waiting (don't time out mid-compile)
+                if (EditorApplication.isCompiling)
+                {
+                    // Reset elapsed so we don't timeout during a real long compilation
+                    elapsed = 0f;
+                    continue;
                 }
             }
             
-            // Compilation never started — something is blocking it
-            McpLogger.LogWarning(
-                "Recompilation was requested but did not start within " +
-                $"{CompilationStartTimeoutSeconds}s. This typically happens when a live-reload " +
-                "tool (e.g. Hot Reload) intercepts file changes during Play mode. " +
-                "The file edit was likely already applied via hot-reload.");
-            
-            StopCompilationTracking();
-            
+            // Timed out — compilation never completed via the standard pipeline
+            // Check if there are still pending requests (OnCompilationFinished may have raced)
             List<CompilationRequest> requestsToComplete = new List<CompilationRequest>();
             lock (_pendingRequests)
             {
+                if (_pendingRequests.Count == 0)
+                    yield break; // Already handled
+                
                 requestsToComplete.AddRange(_pendingRequests);
                 _pendingRequests.Clear();
             }
+            
+            McpLogger.LogWarning(
+                "Recompilation did not complete within the expected timeframe. " +
+                "This typically happens when a live-reload tool (e.g. Hot Reload) " +
+                "intercepts file changes during Play mode. " +
+                "The file edit was likely already applied via hot-reload.");
+            
+            StopCompilationTracking();
 
             foreach (var req in requestsToComplete)
             {
@@ -156,7 +171,7 @@ namespace McpUnity.Tools {
                 {
                     ["success"] = true,
                     ["type"] = "text",
-                    ["message"] = "Recompilation was requested but did not start. " +
+                    ["message"] = "Recompilation was requested but did not complete. " +
                                   "This typically happens when a live-reload tool (e.g. Hot Reload) " +
                                   "is active during Play mode and has already applied the changes. " +
                                   "No standard recompilation occurred.",
@@ -191,7 +206,6 @@ namespace McpUnity.Tools {
         /// </summary>
         private void OnAssemblyCompilationFinished(string assemblyPath, CompilerMessage[] messages)
         {
-            _compilationStarted = true;
             _processedAssemblies++;
             _compilationLogs.AddRange(messages);
         }
@@ -201,6 +215,7 @@ namespace McpUnity.Tools {
         /// </summary>
         private void OnCompilationFinished(object _)
         {
+            _compilationFinished = true;
             McpLogger.LogInfo($"Recompilation completed. Processed {_processedAssemblies} assemblies with {_compilationLogs.Count} compiler messages");
 
             // Sort logs by type: first errors, then warnings and info
