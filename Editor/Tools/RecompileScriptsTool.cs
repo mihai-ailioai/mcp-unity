@@ -47,12 +47,11 @@ namespace McpUnity.Tools {
         }
         
         /// <summary>
-        /// How long to wait for compilation to complete before assuming it was blocked.
-        /// Short timeout because if Hot Reload handled it, we know within seconds.
-        /// If real compilation is happening, OnCompilationFinished will fire and the
-        /// watchdog exits early via _compilationFinished flag.
+        /// Hard wall-clock timeout for the watchdog. If OnCompilationFinished hasn't
+        /// fired within this time (regardless of isCompiling state), bail out.
+        /// This handles Hot Reload keeping isCompiling=true indefinitely.
         /// </summary>
-        private const float CompilationWatchdogTimeoutSeconds = 10f;
+        private const float CompilationWatchdogTimeoutSeconds = 8f;
         
         private readonly List<CompilationRequest> _pendingRequests = new List<CompilationRequest>();
         private readonly List<CompilerMessage> _compilationLogs = new List<CompilerMessage>();
@@ -136,10 +135,12 @@ namespace McpUnity.Tools {
                 if (_compilationFinished)
                     yield break;
                 
-                // If Unity is actively compiling, keep waiting (don't time out mid-compile)
-                if (EditorApplication.isCompiling)
+                // If a real compilation started (assemblyCompilationFinished fired at
+                // least once), trust it and keep waiting — don't timeout mid-compile.
+                // But if only isCompiling is true with no assemblies processing,
+                // that's the Hot Reload false-positive: don't reset the timer.
+                if (_processedAssemblies > 0)
                 {
-                    // Reset elapsed so we don't timeout during a real long compilation
                     elapsed = 0f;
                     continue;
                 }
