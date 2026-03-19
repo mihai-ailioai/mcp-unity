@@ -14,7 +14,8 @@ const toolDescription =
   "For large prefabs, use 'rootPath' to inspect a specific subtree, or 'namePattern'/'componentType' to " +
   "search for matching GameObjects (returns a flat list of matches instead of the full hierarchy). " +
   "IMPORTANT: instanceIds from this tool are NOT valid inside modify_prefab (different object graph). " +
-  "Use objectPath for modify_prefab operations.";
+  "Use objectPath for modify_prefab operations. " +
+  "For same-name siblings, use bracket-index syntax: 'Parent/Child[0]', 'Parent/Child[1]' (zero-based).";
 
 const paramsSchema = z.object({
   assetPath: z

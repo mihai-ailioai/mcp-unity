@@ -73,17 +73,38 @@ namespace McpUnity.Tools
 
             if (parts.Length == 0) return null;
 
+            // Parse root segment for possible bracket index
+            string rootName = PrefabStageUtils.ParsePathSegment(parts[0], out int rootIndex);
+
             // Search all loaded scenes including DontDestroyOnLoad
+            int rootMatchCount = 0;
             foreach (var root in GetAllSceneRoots())
             {
-                if (root.name == parts[0])
+                if (root.name == rootName)
                 {
+                    // If root has bracket index, skip until we reach the Nth match
+                    if (rootIndex >= 0 && rootMatchCount != rootIndex)
+                    {
+                        rootMatchCount++;
+                        continue;
+                    }
+                    rootMatchCount++;
+
                     GameObject current = root;
                     bool found = true;
 
                     for (int i = 1; i < parts.Length; i++)
                     {
-                        Transform child = current.transform.Find(parts[i]);
+                        string childName = PrefabStageUtils.ParsePathSegment(parts[i], out int childIndex);
+                        Transform child;
+                        if (childIndex >= 0)
+                        {
+                            child = PrefabStageUtils.FindNthChild(current.transform, childName, childIndex);
+                        }
+                        else
+                        {
+                            child = current.transform.Find(parts[i]);
+                        }
                         if (child == null)
                         {
                             found = false;

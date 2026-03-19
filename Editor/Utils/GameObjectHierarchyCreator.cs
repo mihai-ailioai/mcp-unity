@@ -25,17 +25,23 @@ namespace McpUnity.Utils
 
             for (int i = 0; i < parts.Length; i++)
             {
-                string name = parts[i];
-                if (string.IsNullOrEmpty(name))
+                string segment = parts[i];
+                if (string.IsNullOrEmpty(segment))
                 {
                     throw new ArgumentException($"Invalid path: empty segment at part {i + 1} in path '{path}'. Ensure segments are not empty.");
                 }
 
+                string name = PrefabStageUtils.ParsePathSegment(segment, out int siblingIndex);
+
                 Transform childTransform;
                 if (currentParent == null)
                 {
-                    GameObject rootObj = PrefabStageUtils.FindGameObject(name);
+                    GameObject rootObj = PrefabStageUtils.FindGameObject(segment);
                     childTransform = rootObj?.transform;
+                }
+                else if (siblingIndex >= 0)
+                {
+                    childTransform = PrefabStageUtils.FindNthChild(currentParent.transform, name, siblingIndex);
                 }
                 else
                 {

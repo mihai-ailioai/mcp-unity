@@ -10,6 +10,7 @@ const toolDescription = `Modify a prefab asset headlessly by executing batched o
 Uses an isolated editing context — no Prefab Mode or scene instantiation needed.
 All objectPath references in operations resolve against the prefab hierarchy.
 IMPORTANT: Do NOT use instanceId or newParentId in operations — they are rejected because instance IDs from get_prefab_info are not valid in the isolated editing context. Always use objectPath/newParent (path strings) instead.
+Same-name siblings: use bracket-index syntax to disambiguate, e.g. "Parent/Child[0]", "Parent/Child[1]" (zero-based). Without an index, the first match is returned.
 Changes are saved automatically if any operation succeeds.
 Set 'variantPath' to create a prefab variant from assetPath before applying operations.
 When creating a variant, 'operations' is optional (variant is created even with no operations).
