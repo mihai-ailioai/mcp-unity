@@ -919,8 +919,8 @@ await import(pathToFileURL(resolve(server)).href);
         /// Returns the appropriate config JObject for merging MCP server settings,
         /// with special handling for "Claude Code":
         /// - For most products, returns the root config object.
-        /// - For "Claude Code", returns the project-specific config under "projects/[serverPathParent]".
-        /// Throws a MissingMemberException if the expected project entry does not exist.
+        /// - For "Claude Code", returns the project-specific config under "projects/[projectRoot]".
+        /// Creates the projects object and project entry when missing.
         /// </summary>
         private static JObject GetMcpServersConfig(JObject existingConfig, string productName)
         {
@@ -930,24 +930,21 @@ await import(pathToFileURL(resolve(server)).href);
                 return existingConfig;
             }
 
-            // For Claude Code, use the project-specific config.
-            if (existingConfig["projects"] == null)
+            // For Claude Code, use the Unity project root, not the package Server~ path.
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName.Replace("\\", "/");
+
+            if (existingConfig["projects"] == null || existingConfig["projects"].Type != JTokenType.Object)
             {
-                throw new MissingMemberException("Claude Code config error: Could not find 'projects' entry in existing config.");
+                existingConfig["projects"] = new JObject();
             }
 
-            string serverPath = GetServerPath();
-            string serverPathParent = Path.GetDirectoryName(serverPath)?.Replace("\\", "/");
-            var projectConfig = existingConfig["projects"][serverPathParent];
-
-            if (projectConfig == null)
+            JObject projects = (JObject)existingConfig["projects"];
+            if (projects[projectRoot] == null || projects[projectRoot].Type != JTokenType.Object)
             {
-                throw new MissingMemberException(
-                    $"Claude Code config error: Could not find project entry for parent directory '{serverPathParent}' in existing config."
-                );
+                projects[projectRoot] = new JObject();
             }
 
-            return (JObject)projectConfig;
+            return (JObject)projects[projectRoot];
         }
 
         /// <summary>
