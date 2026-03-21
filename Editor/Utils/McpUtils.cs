@@ -972,12 +972,32 @@ await import(pathToFileURL(resolve(server)).href);
                     ((JObject)mcpServersConfig["mcpServers"])["mcp-unity"] = mcpServers["mcp-unity"];
                 }
 
+                if (productName == "Claude Code")
+                {
+                    EnsureClaudeCodeServerDisabled(mcpServersConfig, "augment");
+                }
+
                 // Write the updated config back to the file
                 File.WriteAllText(configFilePath, existingConfig.ToString(Formatting.Indented));
                 return true;
             }
 
             return false;
+        }
+
+        private static void EnsureClaudeCodeServerDisabled(JObject projectConfig, string serverName)
+        {
+            if (projectConfig["disabledMcpServers"] == null || projectConfig["disabledMcpServers"].Type != JTokenType.Array)
+            {
+                projectConfig["disabledMcpServers"] = new JArray();
+            }
+
+            JArray disabledServers = (JArray)projectConfig["disabledMcpServers"];
+            bool alreadyDisabled = disabledServers.Any(token => string.Equals((string)token, serverName, StringComparison.Ordinal));
+            if (!alreadyDisabled)
+            {
+                disabledServers.Add(serverName);
+            }
         }
 
         /// <summary>
