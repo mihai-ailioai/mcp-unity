@@ -123,6 +123,42 @@ namespace McpUnity.Tests
         }
 
         [Test]
+        public void GetServerStartupIssue_WithMissingDependencies_ReturnsGracefulWarning()
+        {
+            // Arrange
+            Directory.CreateDirectory(_tempDir);
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"), "{}");
+            Directory.CreateDirectory(Path.Combine(_tempDir, "build"));
+            File.WriteAllText(Path.Combine(_tempDir, "build", "index.js"), "export {};\n");
+
+            // Act
+            string issue = McpUtils.GetServerStartupIssue(_tempDir);
+
+            // Assert
+            Assert.IsNotNull(issue);
+            StringAssert.Contains("missing dependencies (node_modules)", issue);
+            StringAssert.Contains("Unity will continue opening", issue);
+            StringAssert.Contains("Force Install Server", issue);
+        }
+
+        [Test]
+        public void GetServerStartupIssue_WithDependenciesAndBuild_ReturnsNull()
+        {
+            // Arrange
+            Directory.CreateDirectory(_tempDir);
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"), "{}");
+            Directory.CreateDirectory(Path.Combine(_tempDir, "node_modules"));
+            Directory.CreateDirectory(Path.Combine(_tempDir, "build"));
+            File.WriteAllText(Path.Combine(_tempDir, "build", "index.js"), "export {};\n");
+
+            // Act
+            string issue = McpUtils.GetServerStartupIssue(_tempDir);
+
+            // Assert
+            Assert.IsNull(issue, "Startup validation should allow a fully prepared server without attempting npm during Unity open.");
+        }
+
+        [Test]
         public void EncodePathForFileUrl_WithSpaces_EncodesCorrectly()
         {
             // Arrange

@@ -91,7 +91,13 @@ namespace McpUnity.Unity
             
             EditorGUILayout.LabelField(statusText, statusStyle);
             EditorGUILayout.EndHorizontal();
-            
+
+            if (!string.IsNullOrEmpty(mcpUnityServer.StartupIssue))
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.HelpBox(mcpUnityServer.StartupIssue, MessageType.Warning);
+            }
+
             EditorGUILayout.Space();
             
             // Port configuration
@@ -111,7 +117,7 @@ namespace McpUnity.Unity
                 mcpUnityServer.StartServer(); // Restart the server.newPort
             }
             EditorGUILayout.EndHorizontal();
-            
+
             EditorGUILayout.Space();
             
             // Test timeout setting
@@ -282,8 +288,15 @@ namespace McpUnity.Unity
             // Force Install Server button
             if (GUILayout.Button("Force Install Server", GUILayout.Height(30)))
             {
-                McpUnityServer.Instance.InstallServer();
-                McpLogger.LogInfo("MCP Unity Server installed successfully.");
+                bool installSucceeded = McpUnityServer.Instance.InstallServer();
+                if (installSucceeded)
+                {
+                    McpLogger.LogInfo("MCP Unity Server installed successfully.");
+                }
+                else
+                {
+                    McpLogger.LogWarning("MCP Unity Server install did not complete successfully. Check the Unity Console for details.");
+                }
             }
             
             EditorGUILayout.EndVertical();

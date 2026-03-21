@@ -37,6 +37,7 @@
   - Open the Unity project that has this package installed.
   - Ensure the server is running (auto-start is controlled by `McpUnitySettings.AutoStartServer`).
   - Settings persist in `ProjectSettings/McpUnitySettings.json`.
+  - Unity startup does **not** auto-run `npm install` / `npm run build`; if `Server~/node_modules` or `Server~/build/index.js` is missing, Unity logs a warning and continues opening. Use `Force Install Server` from the Server window after installing Node.js.
 
 - **Node side (build)**
   - `cd Server~ && npm run build`
@@ -108,6 +109,7 @@ Node reads config from `../ProjectSettings/McpUnitySettings.json` relative to **
 - **Port mismatch**: Unity default is **8090**; update docs/config if you change it.
 - **Name mismatch**: Node `toolName`/`resourceName` must equal Unity `Name` exactly, or Unity responds `unknown_method`.
 - **Long main-thread work**: synchronous `Execute()` blocks the Unity editor; use async patterns for heavy operations.
+- **Missing Node.js / dependencies**: Unity now opens without blocking, but MCP stays unavailable until Node.js is installed and `Force Install Server` is run if `Server~/node_modules` or `Server~/build/index.js` is missing.
 - **Remote connections**: Unity must bind `0.0.0.0` (`AllowRemoteConnections=true`) and Node must target the correct host (`UNITY_HOST`).
 - **Unity domain reload**: the server stops during script reloads and may restart; avoid relying on persistent in-memory state across reloads.
 - **Multiplayer Play Mode**: Clone instances automatically skip server startup; only the main editor hosts the MCP server.

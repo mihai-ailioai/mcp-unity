@@ -29,6 +29,70 @@ namespace McpUnity.Utils
         }
 
         /// <summary>
+        /// Returns true when the packaged Node server has installed dependencies.
+        /// </summary>
+        public static bool HasServerDependencies(string serverPath)
+        {
+            if (string.IsNullOrWhiteSpace(serverPath))
+            {
+                return false;
+            }
+
+            return Directory.Exists(Path.Combine(serverPath, "node_modules"));
+        }
+
+        /// <summary>
+        /// Returns true when the packaged Node server has a built entrypoint ready to run.
+        /// </summary>
+        public static bool HasServerBuild(string serverPath)
+        {
+            if (string.IsNullOrWhiteSpace(serverPath))
+            {
+                return false;
+            }
+
+            return File.Exists(Path.Combine(serverPath, "build", "index.js"));
+        }
+
+        /// <summary>
+        /// Returns a non-blocking startup warning when the MCP Node server is not ready.
+        /// Unity can continue opening even when this warning is present.
+        /// </summary>
+        public static string GetServerStartupIssue(string serverPath)
+        {
+            if (string.IsNullOrWhiteSpace(serverPath) || !Directory.Exists(serverPath))
+            {
+                return "MCP Unity server files were not found. Unity will continue opening, but MCP will be unavailable.";
+            }
+
+            if (!File.Exists(Path.Combine(serverPath, "package.json")))
+            {
+                return "MCP Unity server package.json is missing. Unity will continue opening, but MCP will be unavailable.";
+            }
+
+            bool hasDependencies = HasServerDependencies(serverPath);
+            bool hasBuild = HasServerBuild(serverPath);
+
+            if (hasDependencies && hasBuild)
+            {
+                return null;
+            }
+
+            List<string> missingParts = new List<string>();
+            if (!hasDependencies)
+            {
+                missingParts.Add("dependencies (node_modules)");
+            }
+
+            if (!hasBuild)
+            {
+                missingParts.Add("build output (build/index.js)");
+            }
+
+            return $"MCP Unity server is not fully installed: missing {string.Join(" and ", missingParts)}. Unity will continue opening, but MCP will be unavailable until Node.js is installed and you click 'Force Install Server'.";
+        }
+
+        /// <summary>
         /// Gets the path to the wrapper script in the project root.
         /// </summary>
         private static string GetWrapperScriptPath()
@@ -836,7 +900,7 @@ await import(pathToFileURL(resolve(server)).href);
         /// </summary>
         /// <param name="arguments">Arguments to pass to npm (e.g., "install" or "run build").</param>
         /// <param name="workingDirectory">The working directory where the npm command should be executed.</param>
-        public static void RunNpmCommand(string arguments, string workingDirectory)
+        public static bool RunNpmCommand(string arguments, string workingDirectory)
         {
             string npmExecutable = McpUnitySettings.Instance.NpmExecutablePath;
             bool useCustomNpmPath = !string.IsNullOrWhiteSpace(npmExecutable);
@@ -891,7 +955,7 @@ await import(pathToFileURL(resolve(server)).href);
                     if (process == null)
                     {
                         Debug.LogError($"[MCP Unity] Failed to start npm process with arguments: {arguments} in {workingDirectory}. Process object is null.");
-                        return;
+                        return false;
                     }
 
                     string output = process.StandardOutput.ReadToEnd();
@@ -902,17 +966,16 @@ await import(pathToFileURL(resolve(server)).href);
                     if (process.ExitCode == 0)
                     {
                         Debug.Log($"[MCP Unity] npm {arguments} completed successfully in {workingDirectory}.\n{output}");
+                        return true;
                     }
-                    else
-                    {
-                        Debug.LogError($"[MCP Unity] npm {arguments} failed in {workingDirectory}. Exit Code: {process.ExitCode}. Error: {error}");
-                    }
+                    Debug.LogError($"[MCP Unity] npm {arguments} failed in {workingDirectory}. Exit Code: {process.ExitCode}. Error: {error}");
+                    return false;
                 }
             }
             catch (Exception ex)
             {
-                // Use commandToLog here
                 Debug.LogError($"[MCP Unity] Exception while running npm {arguments} in {workingDirectory}. Error: {ex.Message}");
+                return false;
             }
         }
 

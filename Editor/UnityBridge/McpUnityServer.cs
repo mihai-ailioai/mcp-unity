@@ -42,6 +42,8 @@ namespace McpUnity.Unity
         private CancellationTokenSource _cts;
         private TestRunnerService _testRunnerService;
         private ConsoleLogsService _consoleLogsService;
+
+        public string StartupIssue { get; private set; }
         
         /// <summary>
         /// Called after every domain reload
@@ -116,7 +118,7 @@ namespace McpUnity.Unity
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
 
-            InstallServer();
+            RefreshStartupIssue();
             InitializeServices();
             RegisterResources();
             RegisterTools();
@@ -125,6 +127,16 @@ namespace McpUnity.Unity
             if (McpUnitySettings.Instance.AutoStartServer)
             {
                  StartServer();
+            }
+        }
+
+        private void RefreshStartupIssue()
+        {
+            StartupIssue = McpUtils.GetServerStartupIssue(McpUtils.GetServerPath());
+
+            if (!string.IsNullOrEmpty(StartupIssue))
+            {
+                McpLogger.LogWarning(StartupIssue);
             }
         }
 
@@ -270,34 +282,40 @@ namespace McpUnity.Unity
         /// Installs the MCP Node.js server by running 'npm install' and 'npm run build'
         /// in the server directory if 'node_modules' or 'build' folders are missing.
         /// </summary>
-        public void InstallServer()
+        public bool InstallServer()
         {
             string serverPath = McpUtils.GetServerPath();
 
             if (string.IsNullOrEmpty(serverPath) || !Directory.Exists(serverPath))
             {
                 McpLogger.LogError($"Server path not found or invalid: {serverPath}. Make sure that MCP Node.js server is installed.");
-                return;
+                RefreshStartupIssue();
+                return false;
             }
 
             // Validate server path and warn about potential issues (spaces, special characters)
             if (!McpUtils.ValidateServerPath(serverPath))
             {
                 McpLogger.LogError("Server path validation failed. See previous errors for details.");
-                return;
+                RefreshStartupIssue();
+                return false;
             }
 
+            bool success = true;
             string nodeModulesPath = Path.Combine(serverPath, "node_modules");
             if (!Directory.Exists(nodeModulesPath))
             {
-                McpUtils.RunNpmCommand("install", serverPath);
+                success = McpUtils.RunNpmCommand("install", serverPath) && success;
             }
 
-            string buildPath = Path.Combine(serverPath, "build");
-            if (!Directory.Exists(buildPath))
+            string buildEntryPath = Path.Combine(serverPath, "build", "index.js");
+            if (!File.Exists(buildEntryPath))
             {
-                McpUtils.RunNpmCommand("run build", serverPath);
+                success = McpUtils.RunNpmCommand("run build", serverPath) && success;
             }
+
+            RefreshStartupIssue();
+            return success && string.IsNullOrEmpty(StartupIssue);
         }
         
         /// <summary>
