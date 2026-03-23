@@ -95,7 +95,9 @@ namespace McpUnity.Unity
             if (!string.IsNullOrEmpty(mcpUnityServer.StartupIssue))
             {
                 EditorGUILayout.Space();
-                EditorGUILayout.HelpBox(mcpUnityServer.StartupIssue, MessageType.Warning);
+                EditorGUILayout.HelpBox(
+                    mcpUnityServer.StartupIssue,
+                    mcpUnityServer.IsInstallingServer ? MessageType.Info : MessageType.Warning);
             }
 
             EditorGUILayout.Space();
@@ -283,9 +285,10 @@ namespace McpUnity.Unity
             EditorGUILayout.Separator();
             EditorGUILayout.Separator();
 
-            EditorGUILayout.Space(); 
+            EditorGUILayout.Space();
 
             // Force Install Server button
+            GUI.enabled = !mcpUnityServer.IsInstallingServer;
             if (GUILayout.Button("Force Install Server", GUILayout.Height(30)))
             {
                 bool installSucceeded = McpUnityServer.Instance.InstallServer();
@@ -298,6 +301,7 @@ namespace McpUnity.Unity
                     McpLogger.LogWarning("MCP Unity Server install did not complete successfully. Check the Unity Console for details.");
                 }
             }
+            GUI.enabled = true;
             
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndScrollView();

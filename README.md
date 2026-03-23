@@ -290,7 +290,7 @@ args = ["ABSOLUTE/PATH/TO/mcp-unity/Server~/build/index.js"]
 > When the AI client connects to the WebSocket server, it will automatically show in the green box in the window
 
 > [!NOTE]
-> Unity startup no longer auto-runs `npm install` or `npm run build`. If Node.js is missing or the packaged server dependencies have not been installed yet, Unity will still open normally and show a warning in the Server window. MCP stays unavailable until you install Node.js and click `Force Install Server`.
+> Unity startup no longer blocks on `npm install` or `npm run build`. If the packaged server dependencies are missing and Node.js is available, Unity prepares them in the background while the editor continues opening. If Node.js is unavailable or the background install fails, the Server window shows a warning and you can retry with `Force Install Server`.
 
 ## Optional: Set WebSocket Port
 By default, the WebSocket server runs on port '8090'. You can change this port in two ways:

@@ -10,6 +10,7 @@ using McpUnity.Utils;
 using WebSocketSharp.Server;
 using System.IO;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 using UnityEditor.Callbacks;
 
 namespace McpUnity.Unity
@@ -42,8 +43,10 @@ namespace McpUnity.Unity
         private CancellationTokenSource _cts;
         private TestRunnerService _testRunnerService;
         private ConsoleLogsService _consoleLogsService;
+        private bool _isInstallingServer;
 
         public string StartupIssue { get; private set; }
+        public bool IsInstallingServer => _isInstallingServer;
         
         /// <summary>
         /// Called after every domain reload
@@ -118,7 +121,7 @@ namespace McpUnity.Unity
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
 
-            RefreshStartupIssue();
+            EnsureServerReady();
             InitializeServices();
             RegisterResources();
             RegisterTools();
@@ -130,14 +133,121 @@ namespace McpUnity.Unity
             }
         }
 
+        private void EnsureServerReady()
+        {
+            string serverPath = McpUtils.GetServerPath();
+
+            if (McpUtils.NeedsServerInstall(serverPath))
+            {
+                StartBackgroundInstallIfNeeded(serverPath);
+                if (_isInstallingServer)
+                {
+                    StartupIssue = McpUtils.GetServerStartupIssue(serverPath, canAutoInstall: true, installInProgress: true);
+                    return;
+                }
+            }
+
+            RefreshStartupIssue();
+        }
+
         private void RefreshStartupIssue()
         {
-            StartupIssue = McpUtils.GetServerStartupIssue(McpUtils.GetServerPath());
+            StartupIssue = McpUtils.GetServerStartupIssue(McpUtils.GetServerPath(), canAutoInstall: _isInstallingServer, installInProgress: _isInstallingServer);
 
             if (!string.IsNullOrEmpty(StartupIssue))
             {
                 McpLogger.LogWarning(StartupIssue);
             }
+        }
+
+        private void StartBackgroundInstallIfNeeded(string serverPath)
+        {
+            if (_isInstallingServer || !McpUtils.NeedsServerInstall(serverPath))
+            {
+                return;
+            }
+
+            _isInstallingServer = true;
+            McpLogger.LogInfo("MCP Unity server is missing dependencies or build output. Starting background install.");
+
+            Task.Run(() => InstallServerInternal(serverPath)).ContinueWith(task =>
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    _isInstallingServer = false;
+
+                    if (task.IsFaulted)
+                    {
+                        Exception ex = task.Exception?.GetBaseException();
+                        McpLogger.LogError($"Background MCP Unity server install failed: {ex?.Message}");
+                    }
+                    else if (task.Result.Success)
+                    {
+                        McpLogger.LogInfo("Background MCP Unity server install completed successfully.");
+                    }
+                    else if (!string.IsNullOrEmpty(task.Result.ErrorMessage))
+                    {
+                        McpLogger.LogError(task.Result.ErrorMessage);
+                    }
+
+                    RefreshStartupIssue();
+                };
+            });
+        }
+
+        private struct InstallServerResult
+        {
+            public bool Success;
+            public string ErrorMessage;
+        }
+
+        private InstallServerResult InstallServerInternal(string serverPath)
+        {
+            if (string.IsNullOrEmpty(serverPath) || !Directory.Exists(serverPath))
+            {
+                return new InstallServerResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Server path not found or invalid: {serverPath}. Make sure that MCP Node.js server is installed."
+                };
+            }
+
+            if (!McpUtils.ValidateServerPath(serverPath))
+            {
+                return new InstallServerResult
+                {
+                    Success = false,
+                    ErrorMessage = "Server path validation failed. See previous errors for details."
+                };
+            }
+
+            if (!Directory.Exists(Path.Combine(serverPath, "node_modules")))
+            {
+                McpUtils.ProcessCommandResult installResult = McpUtils.ExecuteNpmCommand("install", serverPath);
+                if (!installResult.Success)
+                {
+                    return new InstallServerResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"[MCP Unity] {installResult.FailureMessage}"
+                    };
+                }
+            }
+
+            if (!File.Exists(Path.Combine(serverPath, "build", "index.js")))
+            {
+                McpUtils.ProcessCommandResult buildResult = McpUtils.ExecuteNpmCommand("run build", serverPath);
+                if (!buildResult.Success)
+                {
+                    return new InstallServerResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"[MCP Unity] {buildResult.FailureMessage}"
+                    };
+                }
+            }
+
+            return new InstallServerResult { Success = true };
         }
 
         /// <summary>
@@ -285,37 +395,14 @@ namespace McpUnity.Unity
         public bool InstallServer()
         {
             string serverPath = McpUtils.GetServerPath();
-
-            if (string.IsNullOrEmpty(serverPath) || !Directory.Exists(serverPath))
+            InstallServerResult result = InstallServerInternal(serverPath);
+            if (!result.Success && !string.IsNullOrEmpty(result.ErrorMessage))
             {
-                McpLogger.LogError($"Server path not found or invalid: {serverPath}. Make sure that MCP Node.js server is installed.");
-                RefreshStartupIssue();
-                return false;
-            }
-
-            // Validate server path and warn about potential issues (spaces, special characters)
-            if (!McpUtils.ValidateServerPath(serverPath))
-            {
-                McpLogger.LogError("Server path validation failed. See previous errors for details.");
-                RefreshStartupIssue();
-                return false;
-            }
-
-            bool success = true;
-            string nodeModulesPath = Path.Combine(serverPath, "node_modules");
-            if (!Directory.Exists(nodeModulesPath))
-            {
-                success = McpUtils.RunNpmCommand("install", serverPath) && success;
-            }
-
-            string buildEntryPath = Path.Combine(serverPath, "build", "index.js");
-            if (!File.Exists(buildEntryPath))
-            {
-                success = McpUtils.RunNpmCommand("run build", serverPath) && success;
+                McpLogger.LogError(result.ErrorMessage);
             }
 
             RefreshStartupIssue();
-            return success && string.IsNullOrEmpty(StartupIssue);
+            return result.Success && string.IsNullOrEmpty(StartupIssue);
         }
         
         /// <summary>

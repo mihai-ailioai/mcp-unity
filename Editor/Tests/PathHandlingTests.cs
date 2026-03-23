@@ -123,7 +123,7 @@ namespace McpUnity.Tests
         }
 
         [Test]
-        public void GetServerStartupIssue_WithMissingDependencies_ReturnsGracefulWarning()
+        public void GetServerStartupIssue_WithMissingDependenciesAndNoAutoInstall_ReturnsGracefulWarning()
         {
             // Arrange
             Directory.CreateDirectory(_tempDir);
@@ -132,13 +132,31 @@ namespace McpUnity.Tests
             File.WriteAllText(Path.Combine(_tempDir, "build", "index.js"), "export {};\n");
 
             // Act
-            string issue = McpUtils.GetServerStartupIssue(_tempDir);
+            string issue = McpUtils.GetServerStartupIssue(_tempDir, canAutoInstall: false, installInProgress: false);
 
             // Assert
             Assert.IsNotNull(issue);
             StringAssert.Contains("missing dependencies (node_modules)", issue);
             StringAssert.Contains("Unity will continue opening", issue);
             StringAssert.Contains("Force Install Server", issue);
+        }
+
+        [Test]
+        public void GetServerStartupIssue_WithMissingDependenciesAndBackgroundInstall_ReturnsProgressMessage()
+        {
+            // Arrange
+            Directory.CreateDirectory(_tempDir);
+            File.WriteAllText(Path.Combine(_tempDir, "package.json"), "{}");
+            Directory.CreateDirectory(Path.Combine(_tempDir, "build"));
+            File.WriteAllText(Path.Combine(_tempDir, "build", "index.js"), "export {};\n");
+
+            // Act
+            string issue = McpUtils.GetServerStartupIssue(_tempDir, canAutoInstall: true, installInProgress: true);
+
+            // Assert
+            Assert.IsNotNull(issue);
+            StringAssert.Contains("being installed in the background", issue);
+            StringAssert.Contains("Unity will continue opening", issue);
         }
 
         [Test]

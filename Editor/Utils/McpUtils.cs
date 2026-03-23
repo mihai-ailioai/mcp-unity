@@ -16,6 +16,14 @@ namespace McpUnity.Utils
     /// </summary>
     public static class McpUtils
     {
+        public class ProcessCommandResult
+        {
+            public bool Success { get; set; }
+            public int ExitCode { get; set; }
+            public string Output { get; set; }
+            public string Error { get; set; }
+            public string FailureMessage { get; set; }
+        }
 
         // Cached result for Multiplayer Play Mode clone detection
         private static bool? _isMultiplayerPlayModeClone;
@@ -55,10 +63,18 @@ namespace McpUnity.Utils
         }
 
         /// <summary>
+        /// Returns true when the server still needs npm install and/or npm run build.
+        /// </summary>
+        public static bool NeedsServerInstall(string serverPath)
+        {
+            return !HasServerDependencies(serverPath) || !HasServerBuild(serverPath);
+        }
+
+        /// <summary>
         /// Returns a non-blocking startup warning when the MCP Node server is not ready.
         /// Unity can continue opening even when this warning is present.
         /// </summary>
-        public static string GetServerStartupIssue(string serverPath)
+        public static string GetServerStartupIssue(string serverPath, bool canAutoInstall = false, bool installInProgress = false)
         {
             if (string.IsNullOrWhiteSpace(serverPath) || !Directory.Exists(serverPath))
             {
@@ -78,6 +94,11 @@ namespace McpUnity.Utils
                 return null;
             }
 
+            if (canAutoInstall && installInProgress)
+            {
+                return "MCP Unity server dependencies are being installed in the background. Unity will continue opening, and MCP will become available when installation completes.";
+            }
+
             List<string> missingParts = new List<string>();
             if (!hasDependencies)
             {
@@ -90,6 +111,96 @@ namespace McpUnity.Utils
             }
 
             return $"MCP Unity server is not fully installed: missing {string.Join(" and ", missingParts)}. Unity will continue opening, but MCP will be unavailable until Node.js is installed and you click 'Force Install Server'.";
+        }
+
+        private static System.Diagnostics.ProcessStartInfo CreateNpmProcessStartInfo(string arguments, string workingDirectory)
+        {
+            string npmExecutable = McpUnitySettings.Instance.NpmExecutablePath;
+            bool useCustomNpmPath = !string.IsNullOrWhiteSpace(npmExecutable);
+
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                WorkingDirectory = workingDirectory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            if (useCustomNpmPath)
+            {
+                startInfo.FileName = npmExecutable;
+                startInfo.Arguments = arguments;
+            }
+            else if (Application.platform == RuntimePlatform.WindowsEditor)
+            {
+                startInfo.FileName = "cmd.exe";
+                startInfo.Arguments = $"/c npm {arguments}";
+            }
+            else
+            {
+                string userShell = Environment.GetEnvironmentVariable("SHELL") ?? "/bin/bash";
+                string shellName = Path.GetFileName(userShell);
+                string rcFile = shellName == "zsh" ? ".zshrc" : ".bashrc";
+
+                startInfo.FileName = userShell;
+                startInfo.Arguments = $"-c \"source ~/{rcFile} 2>/dev/null || true; npm {arguments}\"";
+
+                string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                string homeDir = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+                string extraPaths = string.Join(":",
+                    "/usr/local/bin",
+                    "/opt/homebrew/bin",
+                    $"{homeDir}/.nvm/versions/node/default/bin"
+                );
+                startInfo.EnvironmentVariables["PATH"] = $"{extraPaths}:{currentPath}";
+            }
+
+            return startInfo;
+        }
+
+        public static ProcessCommandResult ExecuteNpmCommand(string arguments, string workingDirectory)
+        {
+            System.Diagnostics.ProcessStartInfo startInfo = CreateNpmProcessStartInfo(arguments, workingDirectory);
+
+            try
+            {
+                using (var process = System.Diagnostics.Process.Start(startInfo))
+                {
+                    if (process == null)
+                    {
+                        return new ProcessCommandResult
+                        {
+                            Success = false,
+                            FailureMessage = $"Failed to start npm process with arguments: {arguments} in {workingDirectory}. Process object is null."
+                        };
+                    }
+
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+
+                    process.WaitForExit();
+
+                    return new ProcessCommandResult
+                    {
+                        Success = process.ExitCode == 0,
+                        ExitCode = process.ExitCode,
+                        Output = output,
+                        Error = error,
+                        FailureMessage = process.ExitCode == 0
+                            ? null
+                            : $"npm {arguments} failed in {workingDirectory}. Exit Code: {process.ExitCode}. Error: {error}"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                return new ProcessCommandResult
+                {
+                    Success = false,
+                    FailureMessage = $"Exception while running npm {arguments} in {workingDirectory}. Error: {ex.Message}"
+                };
+            }
         }
 
         /// <summary>
@@ -902,81 +1013,16 @@ await import(pathToFileURL(resolve(server)).href);
         /// <param name="workingDirectory">The working directory where the npm command should be executed.</param>
         public static bool RunNpmCommand(string arguments, string workingDirectory)
         {
-            string npmExecutable = McpUnitySettings.Instance.NpmExecutablePath;
-            bool useCustomNpmPath = !string.IsNullOrWhiteSpace(npmExecutable);
+            ProcessCommandResult result = ExecuteNpmCommand(arguments, workingDirectory);
 
-            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
+            if (result.Success)
             {
-                WorkingDirectory = workingDirectory,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false, // Important for redirection and direct execution
-                CreateNoWindow = true
-            };
-
-            if (useCustomNpmPath)
-            {
-                // Use the custom path directly
-                startInfo.FileName = npmExecutable;
-                startInfo.Arguments = arguments;
-            }
-            else if (Application.platform == RuntimePlatform.WindowsEditor)
-            {
-                // Fallback to cmd.exe to find 'npm' in PATH
-                startInfo.FileName = "cmd.exe";
-                startInfo.Arguments = $"/c npm {arguments}";
-            }
-            else // macOS / Linux
-            {
-                string userShell = Environment.GetEnvironmentVariable("SHELL") ?? "/bin/bash";
-                string shellName = Path.GetFileName(userShell);
-                
-                // Source rc file to init version managers (nvm, fnm, volta) - GUI apps don't inherit shell env
-                string rcFile = shellName == "zsh" ? ".zshrc" : ".bashrc";
-                
-                startInfo.FileName = userShell;
-                startInfo.Arguments = $"-c \"source ~/{rcFile} 2>/dev/null || true; npm {arguments}\"";
-
-                // Fallback PATH for common npm locations
-                string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                string homeDir = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-                string extraPaths = string.Join(":",
-                    "/usr/local/bin",
-                    "/opt/homebrew/bin",
-                    $"{homeDir}/.nvm/versions/node/default/bin"  // nvm default alias
-                );
-                startInfo.EnvironmentVariables["PATH"] = $"{extraPaths}:{currentPath}";
+                Debug.Log($"[MCP Unity] npm {arguments} completed successfully in {workingDirectory}.\n{result.Output}");
+                return true;
             }
 
-            try
-            {
-                using (var process = System.Diagnostics.Process.Start(startInfo))
-                {
-                    if (process == null)
-                    {
-                        Debug.LogError($"[MCP Unity] Failed to start npm process with arguments: {arguments} in {workingDirectory}. Process object is null.");
-                        return false;
-                    }
-
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
-
-                    process.WaitForExit();
-
-                    if (process.ExitCode == 0)
-                    {
-                        Debug.Log($"[MCP Unity] npm {arguments} completed successfully in {workingDirectory}.\n{output}");
-                        return true;
-                    }
-                    Debug.LogError($"[MCP Unity] npm {arguments} failed in {workingDirectory}. Exit Code: {process.ExitCode}. Error: {error}");
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP Unity] Exception while running npm {arguments} in {workingDirectory}. Error: {ex.Message}");
-                return false;
-            }
+            Debug.LogError($"[MCP Unity] {result.FailureMessage}");
+            return false;
         }
 
         /// <summary>
