@@ -252,18 +252,6 @@ namespace McpUnity.Unity
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("MCP Configuration", EditorStyles.boldLabel);
 
-            ShowConfigButton("Windsurf", McpUtils.AddToWindsurfIdeConfig);
-            
-            EditorGUILayout.Space();
-            
-            ShowConfigButton("Claude Desktop", McpUtils.AddToClaudeDesktopConfig);
-            
-            EditorGUILayout.Space();
-            
-            ShowConfigButton("Cursor", McpUtils.AddToCursorConfig);
-
-            EditorGUILayout.Space();
-
             ShowConfigButton("Claude Code", McpUtils.AddToClaudeCodeConfig);
 
             EditorGUILayout.Space();
@@ -272,15 +260,7 @@ namespace McpUnity.Unity
 
             EditorGUILayout.Space();
 
-            ShowConfigButton("GitHub Copilot", McpUtils.AddToGitHubCopilotConfig);
-
-            EditorGUILayout.Space();
-
             ShowConfigButton("Codex CLI", McpUtils.AddToCodexCliConfig);
-
-            EditorGUILayout.Space();
-
-            ShowConfigButton("Google Antigravity", McpUtils.AddToAntigravityConfig);
 
             EditorGUILayout.Separator();
             EditorGUILayout.Separator();
